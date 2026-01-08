@@ -3,6 +3,7 @@ from stable_baselines3 import PPO
 import os
 import time
 from .definitions import PROJECT_ROOT
+import sys
 
 
 def render_model_gym(model_path:str, xml_path:str):
@@ -32,9 +33,11 @@ def render_model_gym(model_path:str, xml_path:str):
             obs, info = eval_env.reset()
 
 if __name__ == "__main__":
-
     xml_path = os.path.join(PROJECT_ROOT, "animals", "ant.xml")
-    load_model = "ppo_ant_2026-01-08_17-27.zip"
 
+    # Default model
+    load_model = "ppo_ant_2026-01-08_17-27.zip"
     model_path = os.path.join(PROJECT_ROOT, "trained_models", load_model)
+    
+    print(f"Loading model from: {model_path}")
     render_model_gym(model_path, xml_path)
