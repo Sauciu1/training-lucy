@@ -1,0 +1,4 @@
+logs/monitor/*
+*.pyc
+__pycache__/
+trained_models/
