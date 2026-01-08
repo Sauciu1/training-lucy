@@ -1,0 +1,35 @@
+[project]
+name = "training-lucy"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "gymnasium>=1.2.3",
+    "gymnasium-robotics>=1.4.2",
+    "ipykernel>=7.1.0",
+    "matplotlib>=3.10.8",
+    "mujoco>=3.4.0",
+    "mujoco-mjx>=3.4.0",
+    "mujoco-py>=2.1.2.14",
+    "stable-baselines3>=2.7.1",
+    "torch",
+    "torchvision",
+    "warp>=1.0.4",
+]
+
+
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
