@@ -65,21 +65,24 @@ def collect_frames(env:MujocoEnv, max_frames: int = 20, attr_keys=None):
         action = env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)
 
-
-        prev_time = float(info["elapsed_sim_time"])
-
+        # Robust timestamp extraction
+        if isinstance(info, dict) and info.get("elapsed_sim_time") is not None:
+            prev_time = float(info["elapsed_sim_time"])
+        else:
+            prev_time = prev_time + getattr(env, "dt", 0.0)
 
         frame = env.render()
 
-
-
+        # Record attributes (always) and append frame only if available
+        row = _make_row(info, prev_time, reward)
         if frame is not None:
             frames.append(frame)
-            attrs.append(_make_row(info, prev_time, reward))
+        attrs.append(row)
 
+        # If episode terminated, return immediately with last reward captured
         if terminated:
             print("Episode terminated during frame collection.")
-            break
+            return frames, attrs
 
     return frames, attrs
 

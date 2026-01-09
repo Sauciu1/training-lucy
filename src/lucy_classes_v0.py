@@ -98,6 +98,7 @@ class LucyEnv(MujocoEnv):
                 )
             except:
                 pass
+
     
     def _get_obs(self) -> np.ndarray:
         """
@@ -251,12 +252,16 @@ class LucyStandingWrapper(gym.Wrapper):
     def __init__(
         self,
         env,
-        target_height: list = [0.20,0.40],
+        target_height: list = [0.30,0.35],
         height_weight: float = 2.0,
         upright_weight: float = 1.0,
         stillness_weight: float = 0.5,
         body_contact_penalty: float = -1.0,
-        fall_threshold: float = 0.2,
+        fall_threshold: float = 0.01,
+        fall_penalty: float = -50.0,
+        head_direction_cone_deg: float = 20,
+        head_direction_weight: float = 1.0,
+        
     ):
         super().__init__(env)
         
@@ -266,12 +271,18 @@ class LucyStandingWrapper(gym.Wrapper):
         self.stillness_weight = stillness_weight
         self.body_contact_penalty = body_contact_penalty
         self.fall_threshold = fall_threshold
+        self.fall_penalty = fall_penalty
+        # Head direction params
+        self.head_direction_cone_deg = head_direction_cone_deg
+        self.head_direction_weight = head_direction_weight
         
         # Get chest body ID
         import mujoco
         self._chest_id = mujoco.mj_name2id(
             self.unwrapped.model, mujoco.mjtObj.mjOBJ_BODY, "chest"
         )
+        # Cache head id too (may be used by head_direction_reward)
+        self._head_id = mujoco.mj_name2id(self.unwrapped.model, mujoco.mjtObj.mjOBJ_BODY, "head")
 
     @property
     def xpos(self):
@@ -287,11 +298,11 @@ class LucyStandingWrapper(gym.Wrapper):
         if  self.target_height[0] < chest_height < self.target_height[1]:
             height_error = 0.0
         else:
-            height_error = self.target_height[0] - chest_height
+            height_error = abs(min([abs(chest_height - h) for h in self.target_height]))
 
-        height_error = abs(min([abs(chest_height - h) for h in self.target_height]))
+        
 
-        height_reward = self.height_weight * np.exp(-5 * height_error)
+        height_reward = self.height_weight * np.exp(-5 * height_error**0.5)
         return height_reward, chest_height
 
     @property
@@ -312,7 +323,31 @@ class LucyStandingWrapper(gym.Wrapper):
         stillness_reward = self.stillness_weight * np.exp(-2 * (linear_vel + 0.5 * angular_vel))
         return stillness_reward
     
-    
+    @property
+    def head_direction_reward(self):
+        """Return (reward, angle_deg) — simplified.
+
+        Projects head x-axis onto the horizontal plane and measures angle to
+        world +x; gives linear reward inside cone, else zero.
+        """
+        hid = getattr(self, "_head_id", None)
+        if hid is None or hid < 0:
+            return 0.0, None
+
+        vx, vy = self.xmat[hid].reshape(3, 3)[:, 0][:2]
+        norm = np.hypot(vx, vy)
+        if norm < 1e-6:
+            return 0.0, None
+
+        angle_deg = abs(float(np.degrees(np.arctan2(vy, vx))))
+        cone = float(self.head_direction_cone_deg)
+        if angle_deg > cone:
+            return 0.0, angle_deg
+
+        score = 1.0 - (angle_deg / cone)
+        return float(self.head_direction_weight * score), angle_deg
+
+
     def step(self, action):
         obs, base_reward, terminated, truncated, info = self.env.step(action)
         
@@ -322,6 +357,7 @@ class LucyStandingWrapper(gym.Wrapper):
         
         upright_reward, upright_score = self.upright_reward
         stillness_reward = self.stillness_reward
+        head_dir_reward, head_dir_angle = self.head_direction_reward
 
 
         body_contacts = self.unwrapped.get_body_contacts()
@@ -330,7 +366,7 @@ class LucyStandingWrapper(gym.Wrapper):
         # === Fall termination ===
         if chest_height < self.fall_threshold:
             terminated = True
-            fall_penalty = -10.0
+            fall_penalty = self.fall_penalty
         else:
             fall_penalty = 0.0
         
@@ -339,6 +375,7 @@ class LucyStandingWrapper(gym.Wrapper):
             height_reward +
             upright_reward +
             stillness_reward +
+            head_dir_reward +
             contact_penalty +
             fall_penalty +
             0.5  # Small alive bonus
@@ -350,6 +387,8 @@ class LucyStandingWrapper(gym.Wrapper):
             "upright_reward": upright_reward,
             "upright_score": upright_score,
             "stillness_reward": stillness_reward,
+            "head_direction_reward": head_dir_reward,
+            "head_direction_angle": head_dir_angle,
             "body_contacts": len(body_contacts),
             "contact_penalty": contact_penalty,
             "chest_height": chest_height,
