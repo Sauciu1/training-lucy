@@ -84,9 +84,9 @@ class LucyEnv(MujocoEnv):
             self._init_qvel = self.data.qvel.copy()
         
         # Cache body and geom IDs for reward computation
-        self._chest_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "chest")
-        self._head_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "head")
-        self._floor_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
+        self._chest_id = self.name_to_id("chest", "body")
+        self._head_id = self.name_to_id("head", "body")
+        self._floor_id = self.name_to_id("floor", "geom")
         
         # Foot geom IDs for contact detection
         self._foot_geom_ids = {}
@@ -99,6 +99,36 @@ class LucyEnv(MujocoEnv):
             except:
                 pass
 
+    def name_to_id(self, name: str, obj_type: object) -> int|None:
+        """Convert a name to its Mujoco ID.
+
+        Accepts either an object-type string ("body", "geom", etc.) or
+        a Mujoco enum value (like `mujoco.mjtObj.mjOBJ_BODY`). Returns
+        the ID or None if not found.
+        """
+        # Allow passing either string keys or Mujoco enum (int)
+        if isinstance(obj_type, str):
+            type_map = {
+                "body": mujoco.mjtObj.mjOBJ_BODY,
+                "geom": mujoco.mjtObj.mjOBJ_GEOM,
+                "joint": mujoco.mjtObj.mjOBJ_JOINT,
+                "actuator": mujoco.mjtObj.mjOBJ_ACTUATOR,
+                "sensor": mujoco.mjtObj.mjOBJ_SENSOR,
+                "key": mujoco.mjtObj.mjOBJ_KEY,
+            }
+            if obj_type not in type_map:
+                raise ValueError(f"Unknown object type: {obj_type}")
+            tm = type_map[obj_type]
+        elif isinstance(obj_type, int):
+            tm = obj_type
+        else:
+            raise ValueError(f"Unsupported obj_type: {obj_type}")
+
+        obj_id = mujoco.mj_name2id(self.model, tm, name)
+        if obj_id < 0:
+            return None
+        return obj_id
+    
     
     def _get_obs(self) -> np.ndarray:
         """
@@ -170,6 +200,8 @@ class LucyEnv(MujocoEnv):
     def reset_model(self) -> np.ndarray:
         """Reset to initial state with noise."""
         noise_scale = self.reset_noise_scale
+
+
         
         qpos = self._init_qpos + noise_scale * self.np_random.uniform(
             low=-1, high=1, size=self.model.nq
@@ -181,6 +213,10 @@ class LucyEnv(MujocoEnv):
         # Keep root quaternion normalized
         qpos[3:7] = qpos[3:7] / np.linalg.norm(qpos[3:7])
         
+        # Prevent root from being lowered below initial pose to avoid leg-foot clipping
+        root_z_idx = 2
+        qpos[root_z_idx] = 0.2
+
         self.set_state(qpos, qvel)
         # Reset simulated-time counter when episode/reset starts
         self._sim_time = 0.0
@@ -221,6 +257,7 @@ class LucyEnv(MujocoEnv):
                 continue
             
             # Get geom name
+
             geom_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, other_geom)
             if geom_name:
                 body_contacts.append(geom_name)
@@ -254,6 +291,7 @@ class LucyStandingWrapper(gym.Wrapper):
         env,
         target_height: list = [0.30,0.35],
         height_weight: float = 2.0,
+        height_parts = ["chest", "hips"],
         upright_weight: float = 1.0,
         stillness_weight: float = 0.5,
         body_contact_penalty: float = -1.0,
@@ -272,17 +310,16 @@ class LucyStandingWrapper(gym.Wrapper):
         self.body_contact_penalty = body_contact_penalty
         self.fall_threshold = fall_threshold
         self.fall_penalty = fall_penalty
+        self.upright_parts = height_parts
+
         # Head direction params
         self.head_direction_cone_deg = head_direction_cone_deg
         self.head_direction_weight = head_direction_weight
         
         # Get chest body ID
-        import mujoco
-        self._chest_id = mujoco.mj_name2id(
-            self.unwrapped.model, mujoco.mjtObj.mjOBJ_BODY, "chest"
-        )
+        self._chest_id = self.unwrapped.name_to_id("chest", "body")
         # Cache head id too (may be used by head_direction_reward)
-        self._head_id = mujoco.mj_name2id(self.unwrapped.model, mujoco.mjtObj.mjOBJ_BODY, "head")
+        self._head_id = self.unwrapped.name_to_id("head", "body")
 
     @property
     def xpos(self):
@@ -292,24 +329,45 @@ class LucyStandingWrapper(gym.Wrapper):
         return self.unwrapped.data.xmat
 
     @property
-    def height_reward(self):
-        chest_height = self.xpos[self._chest_id, 2]
+    def height_reward(self) -> tuple[float, float]:
+        """Return (mean_height_reward, mean_height) over configured height parts.
 
-        if  self.target_height[0] < chest_height < self.target_height[1]:
-            height_error = 0.0
-        else:
-            height_error = abs(min([abs(chest_height - h) for h in self.target_height]))
+        Uses `self.unwrapped.name_to_id(...)` so it tolerates missing parts.
+        """
+        heights: list[float] = []
+        rewards: list[float] = []
 
-        
+        for part_name in self.upright_parts:
+            part_id = self.unwrapped.name_to_id(part_name, "body")
+            if part_id is None or part_id < 0:
+                continue
 
-        height_reward = self.height_weight * np.exp(-5 * height_error**0.5)
-        return height_reward, chest_height
+            part_height = float(self.unwrapped.data.xpos[part_id, 2])
 
+            if self.target_height[0] < part_height < self.target_height[1]:
+                height_error = 0.0
+            else:
+                height_error = abs(min([abs(part_height - h) for h in self.target_height]))
+
+            r = self.height_weight * np.exp(-5 * height_error**0.5)
+
+            heights.append(part_height)
+            rewards.append(r)
+
+        if not rewards:
+            return 0.0, 0.0
+
+        return float(np.mean(rewards)), float(np.mean(heights))
+
+  
     @property
     def upright_reward(self):
-        chest_xmat = self.xmat[self._chest_id].reshape(3, 3)
+        """Reward for upright posture of specified body parts."""
+        part_name = "chest"
+        part_id = self.unwrapped.name_to_id(part_name, "body")
+        part_xmat = self.xmat[part_id].reshape(3, 3)
         # z-axis should point up (0, 0, 1)
-        z_axis = chest_xmat[:, 2]
+        z_axis = part_xmat[:, 2]
         upright_score = z_axis[2]  # Should be close to 1 when upright
         upright_reward = self.upright_weight * max(0, upright_score)
 
@@ -317,6 +375,7 @@ class LucyStandingWrapper(gym.Wrapper):
     
     @property
     def stillness_reward(self):
+        """Reward for not moving much"""
         qvel = self.unwrapped.data.qvel
         linear_vel = np.linalg.norm(qvel[:3])  # Root linear velocity
         angular_vel = np.linalg.norm(qvel[3:6])  # Root angular velocity
@@ -347,53 +406,54 @@ class LucyStandingWrapper(gym.Wrapper):
         score = 1.0 - (angle_deg / cone)
         return float(self.head_direction_weight * score), angle_deg
 
-
-    def step(self, action):
-        obs, base_reward, terminated, truncated, info = self.env.step(action)
-        
-
-
+    def _standing_components(self) -> dict:
+        # compute numeric components in one place
         height_reward, chest_height = self.height_reward
-        
         upright_reward, upright_score = self.upright_reward
         stillness_reward = self.stillness_reward
         head_dir_reward, head_dir_angle = self.head_direction_reward
 
-
         body_contacts = self.unwrapped.get_body_contacts()
         contact_penalty = self.body_contact_penalty * len(body_contacts)
-        
-        # === Fall termination ===
-        if (chest_height < self.fall_threshold[0]) or (chest_height > self.fall_threshold[1]):
-            terminated = True
-            fall_penalty = self.fall_penalty
-        else:
-            fall_penalty = 0.0
-        
-        # === Total reward ===
-        reward = (
-            height_reward +
-            upright_reward +
-            stillness_reward +
-            head_dir_reward +
-            contact_penalty +
-            fall_penalty +
-            0.5  # Small alive bonus
-        )
-        
-        # === Info for debugging ===
-        info.update({
-            "height_reward": height_reward,
-            "upright_reward": upright_reward,
-            "upright_score": upright_score,
-            "stillness_reward": stillness_reward,
-            "head_direction_reward": head_dir_reward,
+
+        # fall penalty and termination flag come from chest_height
+        fall_penalty = self.fall_penalty if (chest_height < self.fall_threshold[0] or chest_height > self.fall_threshold[1]) else 0.0
+
+        return {
+            "height_reward": float(height_reward),
+            "chest_height": float(chest_height),
+            "upright_reward": float(upright_reward),
+            "upright_score": float(upright_score),
+            "stillness_reward": float(stillness_reward),
+            "head_direction_reward": float(head_dir_reward),
             "head_direction_angle": head_dir_angle,
             "body_contacts": len(body_contacts),
-            "contact_penalty": contact_penalty,
-            "chest_height": chest_height,
-        })
-        
+            "contact_penalty": float(contact_penalty),
+            "fall_penalty": float(fall_penalty),
+        }
+
+    def step(self, action):
+        obs, base_reward, terminated, truncated, info = self.env.step(action)
+
+        comps = self._standing_components()
+
+        # if fall occurred, terminate
+        if comps["fall_penalty"] != 0.0:
+            terminated = True
+
+        # sum main reward terms and add small alive bonus
+        reward = (
+            comps["height_reward"]
+            + comps["upright_reward"]
+            + comps["stillness_reward"]
+            + comps["head_direction_reward"]
+            + comps["contact_penalty"]
+            + comps["fall_penalty"]
+            + 0.5
+        )
+
+        # attach all computed diagnostics
+        info.update(comps)
         return obs, reward, terminated, truncated, info
     
     def reset(self, **kwargs):
