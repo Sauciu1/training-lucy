@@ -34,10 +34,12 @@ def render_model_gym(model_path:str, xml_path:str):
 
 if __name__ == "__main__":
     xml_path = os.path.join(PROJECT_ROOT, "animals", "ant.xml")
+    
 
-    # Default model
-    load_model = "ppo_ant_2026-01-08_17-27.zip"
-    model_path = os.path.join(PROJECT_ROOT, "trained_models", load_model)
+    model_path = sys.argv[1]
+    if not os.path.isabs(model_path):
+        model_path = os.path.join(PROJECT_ROOT, model_path)
+
     
     print(f"Loading model from: {model_path}")
     render_model_gym(model_path, xml_path)
