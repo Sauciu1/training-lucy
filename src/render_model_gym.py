@@ -9,7 +9,7 @@ warnings.filterwarnings("ignore", message=".*PPO on the GPU.*")
 
 from src import enforce_absolute_path
 from src.definitions import PROJECT_ROOT
-from src.lucy import LucyEnv
+from src.lucy_classes_v0 import LucyEnv
 from src.ant import BipedalAntWrapper
 
 
@@ -41,20 +41,28 @@ def render_model_gym(model_path: str, xml_path: str, env_type: str = "lucy", spe
 
     obs, info = eval_env.reset()
     
-    # Calculate delay based on speed (1.0 = real-time, 0.5 = half speed, 2.0 = double speed)
-    frame_time = 0.025 / speed  # Base: 0.005 timestep * 5 frame_skip = 0.025s per step
+    # Auto-calculate real-time delay from environment's dt (timestep * frame_skip)
+    # dt is automatically set by MuJoCo env based on XML timestep and frame_skip
+    sim_dt = mujoco_env.dt  # Time per step in simulation seconds
+    print(f"Simulation dt: {sim_dt:.4f}s per step")
     
     print(f"Running simulation at {speed}x speed... Close the window to exit.")
     try:
         while True:
+            step_start = time.perf_counter()
+            
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, info = eval_env.step(action)
             
             # Render the frame - this updates the display
             eval_env.render()
             
-            # Control playback speed
-            time.sleep(frame_time)
+            # Calculate remaining time to sleep for real-time playback
+            elapsed = time.perf_counter() - step_start
+            target_time = sim_dt / speed  # Adjust for playback speed
+            sleep_time = max(0, target_time - elapsed)
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
             if terminated or truncated:
                 obs, info = eval_env.reset()
