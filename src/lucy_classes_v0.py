@@ -6,6 +6,8 @@ from gymnasium import spaces
 from gymnasium.envs.mujoco import MujocoEnv
 import numpy as np
 import mujoco
+
+
 import os
 from src.definitions import PROJECT_ROOT
 
@@ -34,6 +36,7 @@ class LucyEnv(MujocoEnv):
         reset_noise_scale: float = 0.02,  # Reduced from 0.1 to keep feet on ground
         use_sensors: bool = False,
         render_mode: str = None,
+        max_episode_seconds: float = None,
         **kwargs
     ):
         if xml_file is None:
@@ -43,6 +46,10 @@ class LucyEnv(MujocoEnv):
         self.use_sensors = use_sensors
         self._init_qpos = None
         self._init_qvel = None
+        # Optional episode length limit (simulated seconds)
+        self._max_episode_seconds = max_episode_seconds
+        # Simulated-time counter (seconds)
+        self._sim_time = 0.0
         
         # Calculate observation space size
         # Will be set properly after model loads
@@ -55,6 +62,7 @@ class LucyEnv(MujocoEnv):
             frame_skip=frame_skip,
             observation_space=observation_space,
             render_mode=render_mode,
+
             **kwargs
         )
         
@@ -139,14 +147,21 @@ class LucyEnv(MujocoEnv):
         
         # Terminate if fallen (chest too low or tilted too much)
         terminated = chest_height < 0.05
-        
+
+        # Update simulated-time and apply truncation if configured
+        # self.dt is seconds per step (timestep * frame_skip)
+        self._sim_time += self.dt
         truncated = False
-        
+        if self._max_episode_seconds is not None and self._sim_time >= self._max_episode_seconds:
+            truncated = True
+
         info = {
             "forward_velocity": forward_velocity,
             "chest_height": chest_height,
             "ctrl_cost": ctrl_cost,
             "x_position": x_after,
+            "elapsed_sim_time": self._sim_time,
+            "max_episode_seconds": self._max_episode_seconds,
         }
         
         return obs, reward, terminated, truncated, info
@@ -166,7 +181,9 @@ class LucyEnv(MujocoEnv):
         qpos[3:7] = qpos[3:7] / np.linalg.norm(qpos[3:7])
         
         self.set_state(qpos, qvel)
-        
+        # Reset simulated-time counter when episode/reset starts
+        self._sim_time = 0.0
+
         return self._get_obs()
     
     def get_foot_contacts(self) -> dict:
@@ -208,6 +225,8 @@ class LucyEnv(MujocoEnv):
                 body_contacts.append(geom_name)
         
         return body_contacts
+    
+
 
 """
 Wrapper to train Lucy to stand in place.
@@ -232,12 +251,12 @@ class LucyStandingWrapper(gym.Wrapper):
     def __init__(
         self,
         env,
-        target_height: float = 0.15,
+        target_height: list = [0.20,0.40],
         height_weight: float = 2.0,
         upright_weight: float = 1.0,
         stillness_weight: float = 0.5,
         body_contact_penalty: float = -1.0,
-        fall_threshold: float = 0.05,
+        fall_threshold: float = 0.2,
     ):
         super().__init__(env)
         
@@ -264,7 +283,14 @@ class LucyStandingWrapper(gym.Wrapper):
     @property
     def height_reward(self):
         chest_height = self.xpos[self._chest_id, 2]
-        height_error = abs(chest_height - self.target_height)
+
+        if  self.target_height[0] < chest_height < self.target_height[1]:
+            height_error = 0.0
+        else:
+            height_error = self.target_height[0] - chest_height
+
+        height_error = abs(min([abs(chest_height - h) for h in self.target_height]))
+
         height_reward = self.height_weight * np.exp(-5 * height_error)
         return height_reward, chest_height
 

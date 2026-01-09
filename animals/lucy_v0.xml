@@ -13,45 +13,46 @@
   <!-- ==================== DEFAULT CLASSES ==================== -->
   <default>
     <!-- Global defaults -->
-    <joint armature="0.1" damping="0.5" limited="true" frictionloss="0.1"/>
-    <geom conaffinity="0" condim="3" density="5.0" friction="1 0.5 0.5" margin="0.001"/>
+    <joint armature="0.1" damping="0.5" limited="true" frictionloss="0.1"  />
+    <!-- Densities scaled for ~60kg total mass -->
+    <geom conaffinity="0" condim="3" density="125.0" friction="1 0.5 0.5" margin="0.001"/>
     <motor ctrllimited="true" ctrlrange="-1.0 1.0"/>
     
     <!-- Body/torso parts (heavier for stability) -->
     <default class="torso">
-      <geom rgba="0.6 0.45 0.35 1" density="12.0"/>
+      <geom rgba="0.6 0.45 0.35 1" density="300.0"/>
       <joint damping="0.8"/>
-      <motor gear="100"/>
+      <motor gear="30"/>
     </default>
     
     <!-- Head and neck -->
     <default class="head">
-      <geom rgba="0.7 0.55 0.45 1"/>
+      <geom rgba="0.7 0.55 0.45 1" density="125.0"/>
       <joint damping="0.4" range="0 30"/>
-      <motor gear="15"/>
+      <motor gear="8"/>
     </default>
     
     <default class="neck">
-      <geom rgba="0.6 0.48 0.38 1"/>
+      <geom rgba="0.6 0.48 0.38 1" density="125.0"/>
       <joint damping="0.5" range="0 25"/>
-      <motor gear="20"/>
+      <motor gear="8"/>
     </default>
     
     <!-- Front limbs -->
     <default class="front_leg">
-      <geom rgba="0.55 0.4 0.3 1"/>
+      <geom rgba="0.55 0.4 0.3 1" density="125.0"/>
       
       <default class="front_hip">
         <joint damping="0.5" range="0 60"/>
-        <motor gear="60"/>
+        <motor gear="20"/>
       </default>
       <default class="front_knee">
         <joint type="hinge" axis="0 1 0" damping="0.3" range="-120 0"/>
-        <motor gear="60"/>
+        <motor gear="15"/>
       </default>
       <default class="front_ankle">
         <joint type="hinge" axis="0 1 0" damping="0.2" range="-45 45"/>
-        <motor gear="35"/>
+        <motor gear="15"/>
       </default>
       <default class="front_foot">
         <geom friction="1.5 0.5 0.5" conaffinity="1"/>
@@ -60,19 +61,19 @@
     
     <!-- Hind limbs (stronger for propulsion) -->
     <default class="hind_leg">
-      <geom rgba="0.55 0.4 0.3 1"/>
+      <geom rgba="0.55 0.4 0.3 1" density="125.0"/>
       
       <default class="hind_hip">
         <joint damping="0.5" range="0 70"/>
-        <motor gear="80"/>
+        <motor gear="30"/>
       </default>
       <default class="hind_knee">
         <joint type="hinge" axis="0 1 0" damping="0.3" range="-130 0"/>
-        <motor gear="80"/>
+        <motor gear="25"/>
       </default>
       <default class="hind_ankle">
         <joint type="hinge" axis="0 1 0" damping="0.2" range="-50 50"/>
-        <motor gear="45"/>
+        <motor gear="15"/>
       </default>
       <default class="hind_foot">
         <geom friction="1.5 0.5 0.5" conaffinity="1"/>
@@ -81,20 +82,20 @@
     
     <!-- Tail segments (high flexion for balance/expression) -->
     <default class="tail">
-      <geom rgba="0.5 0.35 0.25 1"/>
+      <geom rgba="0.5 0.35 0.25 1" density="125.0"/>
       <joint damping="0.15"/>
-      <motor gear="20"/>
+      <motor gear="5"/>
       
       <default class="tail_base">
         <joint range="0 90"/>
-        <motor gear="25"/>
+        <motor gear="5"/>
       </default>
       <default class="tail_mid">
         <joint range="0 100"/>
       </default>
       <default class="tail_tip">
         <joint range="0 120"/>
-        <motor gear="15"/>
+        <motor gear="5"/>
       </default>
     </default>
   </default>
@@ -116,7 +117,7 @@
     
     <!-- ========== CHEST ========== -->
     <body name="chest" pos="0 0 0.22">
-      <camera name="track" mode="trackcom" pos="0 -1.5 0.5" xyaxes="1 0 0 0 0 1"/>
+      <camera name="track" mode="trackcom" pos="0 -1 0.1" xyaxes="1 0 0 0 0 1"/>
       <joint name="root" type="free" armature="0" damping="0" limited="false"/>
       <geom class="torso" name="chest_geom" type="box" size="0.045 0.06 0.04"/>
       <site name="chest_site" pos="0 0 0" size="0.01"/>
