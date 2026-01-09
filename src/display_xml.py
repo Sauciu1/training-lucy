@@ -2,6 +2,8 @@ import mujoco
 import mujoco.viewer
 import os
 import sys
+
+from src import enforce_absolute_path
 from .definitions import PROJECT_ROOT
 
 
@@ -32,8 +34,7 @@ if __name__ == "__main__":
 
 
     xml_path = sys.argv[1]
-    if not os.path.isabs(xml_path):
-        xml_path = os.path.join(PROJECT_ROOT, xml_path)
+    xml_path = enforce_absolute_path(xml_path)
 
     
     display_xml(xml_path)
