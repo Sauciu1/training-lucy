@@ -27,7 +27,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import mujoco
 
-def collect_frames(env:MujocoEnv, max_frames: int = 20, attr_keys=None):
+def collect_frames(env:MujocoEnv, max_frames: int = 20, attr_keys=None, model=None):
+    """If `model` (stable-baselines style) is provided, use it to pick actions.
+    Otherwise sample random actions from the env action space."""
     """Collect up to ``max_frames`` frames and attribute dicts from ``env``.
 
     Returns (frames, attrs) where ``frames`` is a list of RGB arrays and
@@ -62,7 +64,10 @@ def collect_frames(env:MujocoEnv, max_frames: int = 20, attr_keys=None):
         attrs.append(_make_row(info, prev_time, None))
 
     for _ in range(max_frames - 1):
-        action = env.action_space.sample()
+        if model is not None:
+            action, _ = model.predict(obs, deterministic=True)
+        else:
+            action = env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)
 
         # Robust timestamp extraction
@@ -115,22 +120,48 @@ def show_grid(frames, times, width_per_img=2, height_per_img=2.5):
     plt.tight_layout()
 
 
-def display_test_env(env, max_frames: int = 21, frame_skip:int = 1, attr_keys=None):
+def display_test_env(env, max_frames: int = 21, frame_skip:int = 1, attr_keys=None, model=None):
+    """Collect frames/attributes and display a grid. Returns a DataFrame of attrs.
+
+    If `model` is passed (Stable-Baselines style object), actions will be
+    chosen by model.predict(obs) instead of random sampling.
+    """
     """Collect frames/attributes and display a grid. Returns a DataFrame of attrs."""
     if attr_keys is None:
         attr_keys = []
 
+
+
     frames, attrs = collect_frames(env, max_frames*frame_skip, attr_keys=attr_keys)
+
+
+
+    df = pd.DataFrame(attrs)
+    df["cum_reward"] = df["reward"].cumsum()
+
+    terminated_early = False
+    if len(frames)<max_frames*frame_skip:
+        terminated_early = True
+        last_frame = frames[-1]
+        last_attr = df.iloc[-1, :].to_dict()
+    
+
+
     if frame_skip > 1:
         frames = frames[::frame_skip]
         attrs = attrs[::frame_skip]
+        df = df.iloc[::frame_skip].reset_index(drop=True)
 
-    # Use canonical 'time' field
-    times = [attr.get("time") for attr in attrs]
+    if terminated_early:
+        frames.append(last_frame)
+        df = pd.concat([df, pd.DataFrame([last_attr])], ignore_index=True)
+
+
+    times = df["time"].tolist()
     if times and times[0] is None:
         times[0] = 0.0
 
-    df = pd.DataFrame(attrs)
+    
 
     df = df[["time"]+[str(col) for col in df.columns if col is not "time"]]
 

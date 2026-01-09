@@ -257,7 +257,7 @@ class LucyStandingWrapper(gym.Wrapper):
         upright_weight: float = 1.0,
         stillness_weight: float = 0.5,
         body_contact_penalty: float = -1.0,
-        fall_threshold: float = 0.01,
+        fall_threshold: list = [0.01, 1.0],
         fall_penalty: float = -50.0,
         head_direction_cone_deg: float = 20,
         head_direction_weight: float = 1.0,
@@ -364,7 +364,7 @@ class LucyStandingWrapper(gym.Wrapper):
         contact_penalty = self.body_contact_penalty * len(body_contacts)
         
         # === Fall termination ===
-        if chest_height < self.fall_threshold:
+        if (chest_height < self.fall_threshold[0]) or (chest_height > self.fall_threshold[1]):
             terminated = True
             fall_penalty = self.fall_penalty
         else:
