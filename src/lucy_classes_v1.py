@@ -33,10 +33,12 @@ class LucyEnv(MujocoEnv):
         self,
         xml_file: str = None,
         frame_skip: int = 5,
-        reset_noise_scale: float = 0.02,  # Reduced from 0.1 to keep feet on ground
+        reset_noise_scale: float = 0.2,
         render_mode: str = None,
         max_episode_seconds: float = None,
+    
         stance: str = "quad_stance",
+
         **kwargs,
     ):
         if xml_file is None:
@@ -48,31 +50,42 @@ class LucyEnv(MujocoEnv):
 
         self._max_episode_seconds = max_episode_seconds
 
+
         self._sim_time = 0.0
 
-        # Calculate observation space size
-        # Will be set properly after model loads
-        observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(104,), dtype=np.float64
-        )
+        # Calculate observation space size (use model counts to avoid heavy ops)
+        pos_len = None
+        vel_len = None
+        sens_len = None
 
         super().__init__(
             xml_file,
             frame_skip=frame_skip,
-            observation_space=observation_space,
+            observation_space=spaces.Box(low=-np.inf, high=np.inf, shape=(104,), dtype=np.float32),
             render_mode=render_mode,
             **kwargs,
         )
 
         self.__init_model_stance(stance)
 
-        # Update observation space based on actual model
-        obs_dim = self._get_obs().shape[0]
-        self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float64
-        )
+        # Determine lengths directly from model to avoid allocations
+        pos_len = int(self.model.nq) - 2
+        vel_len = int(self.model.nv)
+        sens_len = int(self.model.nsensordata)
+        obs_dim = pos_len + vel_len + sens_len
 
-        
+        # Preallocate float32 observation buffer to avoid concatenations each step
+        self._obs_buffer = np.empty(obs_dim, dtype=np.float32)
+        self._pos_len = pos_len
+        self._vel_len = vel_len
+        self._sens_len = sens_len
+
+        # Update observation space to correct shape/dtype
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32)
+
+        # ID cache and debug flags
+        self._id_cache: dict[tuple[str, int], int] = {}
+        self.debug_sensors = False
 
         self._preset_geometry_ids()
 
@@ -101,14 +114,20 @@ class LucyEnv(MujocoEnv):
         return info
 
     def sensors_dict(self) -> dict:
-        """Return dict mapping sensor_name -> value (float or numpy array)."""
-        info = self.sensor_info()
+        """Return dict mapping sensor_name -> value (float or numpy array).
+
+        To avoid per-step allocations, this is gated by `self.debug_sensors`.
+        When disabled this returns an empty dict quickly.
+        """
+        if not getattr(self, "debug_sensors", False):
+            return {}
+
         out = {}
-        for name, meta in info.items():
-            adr = meta["adr"]
-            dim = meta["dim"]
-            data = self.data.sensordata[adr : adr + dim].copy()
-            out[name] = float(data[0]) if dim == 1 else data
+        for name, (adr, dim) in self._sensor_meta.items():
+            if dim == 1:
+                out[name] = float(self.data.sensordata[adr])
+            else:
+                out[name] = self.data.sensordata[adr : adr + dim].copy()
         return out
 
     @property
@@ -117,19 +136,47 @@ class LucyEnv(MujocoEnv):
         return self.data.sensordata.copy()
 
     def _preset_geometry_ids(self):
-
-        # Foot geom IDs for contact detection
+        """Cache common IDs and maps to avoid repeated name lookups at runtime."""
+        # Foot geom IDs for contact detection (name -> gid)
         self._foot_geom_ids = {}
+        self._geomid_to_footname = {}
         for name in [
             "front_left_foot_geom",
             "front_right_foot_geom",
             "hind_left_foot_geom",
             "hind_right_foot_geom",
         ]:
+            gid = self.name_to_id(name, "geom")
+            if gid is not None:
+                self._foot_geom_ids[name] = gid
+                self._geomid_to_footname[gid] = name
 
-            self._foot_geom_ids[name] = mujoco.mj_name2id(
-                self.model, mujoco.mjtObj.mjOBJ_GEOM, name
-            )
+        # Quick lookup sets
+        self._foot_geom_id_set = set(self._foot_geom_ids.values())
+
+        # Cache chest and floor IDs
+        self._chest_id = self.name_to_id("chest", "body")
+        self._floor_id = self.name_to_id("floor", "geom")
+
+        # Cache tail actuator ids (names starting with 'tail')
+        self._tail_act_ids = []
+        na = int(self.model.nu)
+        for aid in range(na):
+            aname = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, aid)
+            if aname and aname.startswith("tail"):
+                self._tail_act_ids.append(aid)
+
+        # Cache sensor metadata for fast slicing
+        self._sensor_meta = {}
+        ns = int(self.model.nsensor)
+        for sid in range(ns):
+            sname = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_SENSOR, sid)
+            adr = int(self.model.sensor_adr[sid])
+            if sid + 1 < ns:
+                dim = int(self.model.sensor_adr[sid + 1]) - adr
+            else:
+                dim = int(self.model.nsensordata) - adr
+            self._sensor_meta[sname] = (adr, dim)
 
     def __init_model_stance(self, stance="quad_stance"):
         """Load initial pose from keyframe in XML."""
@@ -141,58 +188,55 @@ class LucyEnv(MujocoEnv):
     def get_sensor_by_name(self, sensor_name: str):
         """Return sensor value for given sensor name.
 
-        For multi-dimensional sensors (e.g., accelerometers, gyros) this returns a
-        numpy array. For scalar sensors (e.g., touch) this returns a float. If the
-        sensor is not found, returns None.
+        Uses cached `_sensor_meta` for fast adr/dim lookup. Returns None if sensor
+        is not present.
         """
-        sid = self.name_to_id(sensor_name, "sensor")
-        if sid is None or sid < 0:
+        meta = self._sensor_meta.get(sensor_name)
+        if meta is None:
             return None
-
-
-        adr = int(self.model.sensor_adr[sid])
-
-
-        ns = int(self.model.nsensor)
-        if sid + 1 < ns:
-            next_adr = int(self.model.sensor_adr[sid + 1])
-            dim = next_adr - adr
-        else:
-            dim = int(self.model.nsensordata) - adr
-
-        data = self.data.sensordata[adr : adr + dim].copy()
-
+        adr, dim = meta
         if dim == 1:
-            return float(data[0])
-        return data
+            return float(self.data.sensordata[adr])
+        return self.data.sensordata[adr : adr + dim].copy()
 
     def get_part_velocity(self, part_name: str) -> dict | None:
-        """Return {'linear': np.array([vx,vy,vz]), 'angular': np.array([wx,wy,wz])} or None."""
-        # try body then geom -> body
-        body_id = self.name_to_id(part_name, "body")
-        if body_id is None or body_id < 0:
-            gid = self.name_to_id(part_name, "geom")
+        """Return {'linear': np.array([vx,vy,vz]), 'angular': np.array([wx,wy,wz])} or None.
 
-        body_id = int(self.model.geom_bodyid[gid])
+        Accepts either a body name or a geom name. Returns None if the named
+        part is not found.
+        """
+        # Try body first
+        bid = self.name_to_id(part_name, "body")
+        if bid is None:
+            # Fall back to geom name -> body id
+            gid = self.name_to_id(part_name, "geom")
+            if gid is None:
+                return None
+            body_id = int(self.model.geom_bodyid[gid])
+        else:
+            body_id = int(bid)
+
+        # Safely access xvel (may not be present in some backends)
         xvel = getattr(self.data, "xvel", None)
 
-        if xvel is None:
+        # Validate body index
+        if xvel is None or body_id < 0 or body_id >= int(self.model.nbody):
             ang = np.zeros(3, dtype=float)
             lin = np.zeros(3, dtype=float)
         else:
-            ang = np.array(xvel[body_id, :3], dtype=float)
-            lin = np.array(xvel[body_id, 3:6], dtype=float)
+            # xvel layout: [wx, wy, wz, vx, vy, vz] (angular then linear)
+            row = np.array(xvel[body_id, :6], dtype=float)
+            ang = row[:3]
+            lin = row[3:6]
 
         return {"linear": lin, "angular": ang, "linear_mag": float(np.linalg.norm(lin))}
 
     def name_to_id(self, name: str, obj_type: object) -> int | None:
-        """Convert a name to its Mujoco ID.
+        """Convert a name to its Mujoco ID with caching.
 
-        Accepts either an object-type string ("body", "geom", etc.) or
-        a Mujoco enum value (like `mujoco.mjtObj.mjOBJ_BODY`). Returns
-        the ID or None if not found.
+        Usage: self.name_to_id('chest', 'body') -> int id or None if not found.
+        Results are cached in self._id_cache to avoid repeated lookups.
         """
-        # Allow passing either string keys or Mujoco enum (int)
         if isinstance(obj_type, str):
             type_map = {
                 "body": mujoco.mjtObj.mjOBJ_BODY,
@@ -205,34 +249,51 @@ class LucyEnv(MujocoEnv):
             if obj_type not in type_map:
                 raise ValueError(f"Unknown object type: {obj_type}")
             tm = type_map[obj_type]
-
         elif isinstance(obj_type, int):
             tm = obj_type
         else:
             raise ValueError(f"Unsupported obj_type: {obj_type}")
 
-        obj_id = mujoco.mj_name2id(self.model, tm, name)
+        key = (name, int(tm))
+        if key in getattr(self, "_id_cache", {}):
+            cached = self._id_cache[key]
+            return None if cached < 0 else cached
 
-        return obj_id
+        obj_id = mujoco.mj_name2id(self.model, tm, name)
+        # Store -1 or id; return None for not found
+        self._id_cache[key] = obj_id
+        return None if obj_id < 0 else obj_id
 
     def _get_obs(self) -> np.ndarray:
+        """Fill and return the preallocated `_obs_buffer`.
+
+        Copies qpos[2:], qvel, and sensordata into the preallocated
+        float32 buffer to avoid per-step concatenations. Returns a *copy*
+        of the buffer to preserve the previous contract (caller-safe).
         """
-        Build observation vector.
-        Excludes x,y position for translation invariance.
-        """
-        # Position (excluding global x, y for translation invariance)
-        position = self.data.qpos[2:].copy()  # 57 dims
+        # Use local refs for speed
+        buf = self._obs_buffer
+        pos_len = self._pos_len
+        vel_len = self._vel_len
+        sens_len = self._sens_len
 
-        # Velocity
-        velocity = self.data.qvel.copy()  # 47 dims
+        # Copy qpos (exclude global x, y)
+        # Assumes self.data.qpos has at least pos_len + 2 elements
+        np.copyto(buf[:pos_len], self.data.qpos[2 : 2 + pos_len], casting="unsafe")
 
-        obs = np.concatenate([position, velocity])
+        # Copy qvel
+        start = pos_len
+        end = start + vel_len
+        np.copyto(buf[start:end], self.data.qvel[:vel_len], casting="unsafe")
 
-        # Add sensor readings
-        sensor_data = self.data.sensordata.copy()
-        obs = np.concatenate([obs, sensor_data])
+        # Copy sensordata (may be zero-length)
+        if sens_len:
+            start = end
+            end = start + sens_len
+            np.copyto(buf[start:end], self.data.sensordata[:sens_len], casting="unsafe")
 
-        return obs
+        # Return a copy so callers can't mutate internal buffer
+        return buf.copy()
 
     def _compute_forward(self, x_before: float) -> tuple[float, float]:
         """Return (x_after, forward_velocity)."""
@@ -337,31 +398,59 @@ class LucyEnv(MujocoEnv):
         return self._get_obs()
 
     def get_foot_contacts(self) -> dict:
-        """Return dict of which feet are in contact with floor."""
+        """Return dict of which feet are in contact with floor using cached ids.
+
+        Optimized to minimize attribute lookups and use set membership checks.
+        """
         contacts = {name: False for name in self._foot_geom_ids}
-        floor_id = self.name_to_id("floor", "geom")
+        floor_id = getattr(self, "_floor_id", None) or self.name_to_id("floor", "geom")
 
-        for i in range(self.data.ncon):
-            contact = self.data.contact[i]
-            g1, g2 = contact.geom1, contact.geom2
+        if floor_id is None:
+            return contacts
 
-            for name, gid in self._foot_geom_ids.items():
-                if (g1 == gid and g2 == floor_id) or (
-                    g2 == gid and g1 == floor_id
-                ):
-                    contacts[name] = True
+        data = self.data
+        contact_arr = data.contact
+        ncon = int(data.ncon)
+        foot_set = self._foot_geom_id_set
+        geom_to_name = self._geomid_to_footname
+
+        for i in range(ncon):
+            c = contact_arr[i]
+            g1 = c.geom1
+            g2 = c.geom2
+
+            if g1 == floor_id and g2 in foot_set:
+                fname = geom_to_name.get(g2)
+                if fname:
+                    contacts[fname] = True
+            elif g2 == floor_id and g1 in foot_set:
+                fname = geom_to_name.get(g1)
+                if fname:
+                    contacts[fname] = True
 
         return contacts
 
     def get_body_contacts(self) -> list:
-        """Return list of body parts touching floor (excluding feet)."""
+        """Return list of body parts touching floor (excluding feet), using cached ids.
+
+        Optimized to minimize attribute access and delay name lookups until needed.
+        """
         body_contacts = []
 
-        floor_id = self.name_to_id("floor", "geom")
+        floor_id = getattr(self, "_floor_id", None) or self.name_to_id("floor", "geom")
+        if floor_id is None:
+            return body_contacts
 
-        for i in range(self.data.ncon):
-            contact = self.data.contact[i]
-            g1, g2 = contact.geom1, contact.geom2
+        data = self.data
+        contact_arr = data.contact
+        ncon = int(data.ncon)
+        foot_set = self._foot_geom_id_set
+        mj_id2name = mujoco.mj_id2name
+
+        for i in range(ncon):
+            c = contact_arr[i]
+            g1 = c.geom1
+            g2 = c.geom2
 
             # Check if floor is involved
             if g1 != floor_id and g2 != floor_id:
@@ -369,13 +458,10 @@ class LucyEnv(MujocoEnv):
             other_geom = g2 if g1 == floor_id else g1
 
             # Skip if it's a foot
-            if other_geom in self._foot_geom_ids.values():
+            if other_geom in foot_set:
                 continue
 
-
-            geom_name = mujoco.mj_id2name(
-                self.model, mujoco.mjtObj.mjOBJ_GEOM, other_geom
-            )
+            geom_name = mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, other_geom)
             if geom_name:
                 body_contacts.append(geom_name)
 
@@ -398,18 +484,22 @@ class LucyStandingWrapper(gym.Wrapper):
         self,
         env: LucyEnv,
         height_target_dicts=[
-            {"part": "chest", "target_height": [0.18, 0.4], "reward_weight": 1.0},
-            {"part": "hips", "target_height": [0.18, 0.4], "reward_weight": 0.5},
+            {"part": "chest", "target_height": [0.22, 0.4], "reward_weight": 1.0},
+            {"part": "hips", "target_height": [0.22, 0.4], "reward_weight": 0.5},
+            {"part": "head", "target_height": [0.4, 0.5], "reward_weight": 0.3},
         ],
         upright_parts: list[str] = ["chest", "head", "hips"],
         upright_weight=1.0,
         stillness_weight=0.2,
         body_contact_penalty=-2.0,
         fall_threshold=[0.12, 0.7],
-        fall_penalty=-30.0,
-        head_direction_cone_deg=40.0,
-        head_direction_weight=0.1,
-        leg_position_weight: float = 0.3,
+        fall_penalty=-80.0,
+        head_direction_cone_deg=20.0,
+        head_direction_weight=0.3,
+        leg_position_weight: float = 0.8,
+        straight_tail_weight = 0.15,
+        tail_action_penalty = 0.15,
+
         which_legs: str = "all",
         **kwargs,
     ):
@@ -422,6 +512,8 @@ class LucyStandingWrapper(gym.Wrapper):
         self.fall_threshold = fall_threshold
         self.fall_penalty = fall_penalty
         self.upright_parts = upright_parts
+        self.straight_tail_weight = straight_tail_weight
+        self.tail_action_penalty = tail_action_penalty  # penalty weight for using tail actuators
 
         # Leg position reward weight (thigh/shin down + foot orientation)
         self.leg_position_weight = leg_position_weight
@@ -605,8 +697,70 @@ class LucyStandingWrapper(gym.Wrapper):
         mean_score = float(np.mean(scores)) if scores else 0.0
         reward = float(self.leg_position_weight * mean_score)
         return reward, details
+    
 
-    def _standing_components(self) -> dict:
+    def straight_tail_reward(self, action=None):
+        """Reward for keeping the tail straight and not actuating it.
+
+        Computes straightness by checking alignment between consecutive tail
+        segment vectors (tail_1 -> tail_2 and tail_2 -> tail_3).  Score is
+        |cos(angle)| between the two segment directions (1.0 = perfectly
+        colinear).  Penalizes actuation magnitude on tail motors (sum of abs
+        controls) when `action` is provided or falls back to `data.ctrl`.
+
+        Returns (reward, details_dict).
+        """
+        # Tail body names
+        tail_bodies = ["tail_1", "tail_2", "tail_3"]
+        poses = []
+        for b in tail_bodies:
+            bid = self.name_to_id(b, "body")
+            if bid is None or bid < 0:
+                return 0.0, {"straight_score": 0.0, "actuation": 0.0}
+            poses.append(self.unwrapped.data.xpos[bid].copy())
+
+        v1 = poses[1] - poses[0]
+        v2 = poses[2] - poses[1]
+        n1 = np.linalg.norm(v1)
+        n2 = np.linalg.norm(v2)
+        if n1 < 1e-8 or n2 < 1e-8:
+            straight_score = 0.0
+        else:
+            cosang = float(np.dot(v1, v2) / (n1 * n2))
+            straight_score = float(abs(max(-1.0, min(1.0, cosang))))
+
+        # Actuation magnitude for tail motors
+        act_vals = []
+
+        # Require cached tail actuator ids to be present — fail fast if missing
+        tail_act_ids = self.unwrapped._tail_act_ids
+        assert isinstance(tail_act_ids, list) and tail_act_ids, (
+            "Tail actuator IDs not found — ensure the model defines tail actuators and `_preset_geometry_ids` was called"
+        )
+
+        # Gather actuation values from provided `action` or `data.ctrl` without try/except
+        ctrl = self.unwrapped.data.ctrl
+        if action is not None and hasattr(action, "__len__"):
+            action_len = len(action)
+        else:
+            action_len = 0
+
+        for aid in tail_act_ids:
+            # assume aid is valid index — will raise naturally if not
+            val = 0.0
+            if action_len and 0 <= aid < action_len:
+                val = float(action[aid])
+            elif len(ctrl) > aid:
+                val = float(ctrl[aid])
+            act_vals.append(val)
+
+        act_mag = float(sum(abs(v) for v in act_vals)) if act_vals else 0.0
+
+        reward = float(self.straight_tail_weight * straight_score - self.tail_action_penalty * act_mag)
+        details = {"straight_score": straight_score, "actuation": act_mag}
+        return reward, details
+
+    def _standing_components(self, action=None) -> dict:
         # compute numeric components in one place
         height_reward_dict = self.height_reward
         total_height_reward = sum(
@@ -633,6 +787,9 @@ class LucyStandingWrapper(gym.Wrapper):
         # Leg position reward is part of standing diagnostics
         leg_pos_reward, leg_pos_details = self._leg_position_reward
 
+        # Straight tail reward and actuation penalty
+        straight_tail_reward, straight_tail_details = self.straight_tail_reward(action)
+
         return {
             "height_dict": height_reward_dict,
             "total_height_reward": float(total_height_reward),
@@ -643,6 +800,8 @@ class LucyStandingWrapper(gym.Wrapper):
             "head_direction_angle": head_dir_angle,
             "leg_pos_reward": float(leg_pos_reward),
             "leg_pos_details": leg_pos_details,
+            "straight_tail_reward": float(straight_tail_reward),
+            "straight_tail_details": straight_tail_details,
             "body_contacts": len(body_contacts),
             "contact_penalty": float(contact_penalty),
             "fall_penalty": float(fall_penalty),
@@ -654,7 +813,7 @@ class LucyStandingWrapper(gym.Wrapper):
     def step(self, action):
         obs, base_reward, terminated, truncated, info = self.env.step(action)
 
-        comps = self._standing_components()
+        comps = self._standing_components(action)
 
         # if fall occurred, terminate
         if comps["fall_penalty"] != 0.0:
@@ -667,6 +826,7 @@ class LucyStandingWrapper(gym.Wrapper):
             + comps["stillness_reward"]
             + comps["head_direction_reward"]
             + comps.get("leg_pos_reward", 0.0)
+            + comps.get("straight_tail_reward", 0.0)
             + comps["contact_penalty"]
             + comps["fall_penalty"]
             + 0.5

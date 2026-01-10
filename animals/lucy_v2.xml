@@ -1,44 +1,38 @@
 <mujoco model="lucy">
   <!-- Lucy: Pre-hominid ancestor for quadrupedal/bipedal RL locomotion -->
   <compiler angle="degree" coordinate="local" inertiafromgeom="true" autolimits="true"/>
-  <option integrator="RK4" timestep="0.005" gravity="0 0 -9.81">
+  <option integrator="Euler" timestep="0.004" gravity="0 0 -9.81">
     <flag warmstart="enable" multiccd="enable"/>
   </option>
   <size nconmax="200" njmax="500"/>
-  
+
   <custom>
     <numeric data="0.0 0.0 0.22 1.0 0.0 0.0 0.0" name="init_qpos"/>
   </custom>
-  
+
   <!-- ==================== DEFAULT CLASSES ==================== -->
   <default>
-    <!-- Global defaults -->
-    <joint armature="0.2" damping="1.0" limited="true" frictionloss="0.1"  />
-    <!-- Densities scaled for ~60kg total mass -->
+    <joint armature="0.2" damping="1.0" limited="true" frictionloss="0.1"/>
     <geom conaffinity="0" condim="3" density="125.0" friction="1 0.5 0.5" margin="0.001"/>
     <motor ctrllimited="true" ctrlrange="-0.5 0.5"/>
-    
-    <!-- Body/torso parts (heavier for stability) -->
+
     <default class="torso">
       <geom rgba="0.6 0.45 0.35 1" density="300.0"/>
       <joint damping="0.8"/>
     </default>
-    
-    <!-- Head and neck -->
+
     <default class="head">
       <geom rgba="0.7 0.55 0.45 1" density="125.0"/>
       <joint damping="0.6" range="0 70"/>
     </default>
-    
+
     <default class="neck">
       <geom rgba="0.6 0.48 0.38 1" density="125.0"/>
       <joint damping="0.8" range="0 70"/>
     </default>
-    
-    <!-- Front limbs -->
+
     <default class="front_leg">
       <geom rgba="0.55 0.4 0.3 1" density="125.0"/>
-      
       <default class="front_hip">
         <joint damping="0.5" range="0 60"/>
       </default>
@@ -49,14 +43,12 @@
         <joint type="hinge" axis="0 1 0" damping="0.4" range="-60 60"/>
       </default>
       <default class="front_foot">
-        <geom friction="1.5 0.5 0.5" conaffinity="1"/>
+        <geom friction="1.5 0.5 0.5" conaffinity="1" solref="0.02 0.02"/>
       </default>
     </default>
-    
-    <!-- Hind limbs (stronger for propulsion) -->
+
     <default class="hind_leg">
       <geom rgba="0.55 0.4 0.3 1" density="125.0"/>
-      
       <default class="hind_hip">
         <joint damping="0.5" range="0 70"/>
       </default>
@@ -67,73 +59,59 @@
         <joint type="hinge" axis="0 1 0" damping="0.4" range="-60 60"/>
       </default>
       <default class="hind_foot">
-        <geom friction="1.5 0.5 0.5" conaffinity="1"/>
+        <geom friction="1.5 0.5 0.5" conaffinity="1" solref="0.02 0.02"/>
       </default>
     </default>
-    
-    <!-- Tail segments (high flexion for balance/expression) -->
+
+    <!-- Tail segments (no twist DOF: implemented as 2-hinge "universal" joints per segment) -->
     <default class="tail">
       <geom rgba="0.5 0.35 0.25 1" density="125.0"/>
       <joint damping="0.3"/>
-      
-      <default class="tail_base">
-        <joint range="0 120"/>
-      </default>
-      <default class="tail_mid">
-        <joint range="0 120"/>
-      </default>
-      <default class="tail_tip">
-        <joint range="0 120"/>
-      </default>
     </default>
   </default>
-  
+
   <!-- ==================== ASSETS ==================== -->
   <asset>
     <texture builtin="gradient" height="100" rgb1="0.8 0.9 1" rgb2="0.4 0.5 0.6" type="skybox" width="100"/>
     <texture builtin="checker" height="100" name="texplane" rgb1="0.2 0.3 0.2" rgb2="0.4 0.5 0.4" type="2d" width="100"/>
-    <!-- Roblox face texture -->
     <texture name="face_tex" type="2d" file="roblox_face.png"/>
     <material name="MatPlane" reflectance="0.5" shininess="1" specular="1" texrepeat="60 60" texture="texplane"/>
     <material name="face" texture="face_tex" texrepeat="1 1"/>
   </asset>
-  
+
   <!-- ==================== WORLD ==================== -->
   <worldbody>
     <light cutoff="100" diffuse="1 1 1" dir="0 0 -1.3" directional="true" exponent="1" pos="0 0 1.3" specular=".1 .1 .1"/>
     <geom conaffinity="1" condim="3" material="MatPlane" name="floor" pos="0 0 0" size="40 40 0.1" type="plane" margin="0.001"/>
-    
-    <!-- ========== CHEST ========== -->
+
     <body name="chest" pos="0 0 0.22">
       <camera name="track" mode="trackcom" pos="0 -1 0.1" xyaxes="1 0 0 0 0 1"/>
       <joint name="root" type="free" armature="0" damping="0" limited="false"/>
       <geom class="torso" name="chest_geom" type="box" size="0.045 0.06 0.04"/>
       <site name="chest_site" pos="0 0 0" size="0.01"/>
-      
-      <!-- ========== NECK + HEAD ========== -->
+
       <body name="neck" pos="0.06 0 0.01">
         <joint class="neck" name="neck_base" type="ball" pos="-0.02 0 0"/>
         <geom class="neck" name="neck_geom" type="capsule" fromto="0 0 0 0.04 0 0.005" size="0.025"/>
         <site name="neck_site" pos="0.02 0 0" size="0.01"/>
-        
+
         <body name="head" pos="0.05 0 0.005">
           <joint class="head" name="neck_head" type="ball" pos="-0.02 0 0"/>
           <geom class="head" name="head_geom" type="ellipsoid" size="0.035 0.03 0.03" pos="0.01 0 0" euler="0 90 0" material="face"/>
           <site name="head_site" pos="0.01 0 0" size="0.01"/>
         </body>
       </body>
-      
-      <!-- ========== FRONT LEFT LEG ========== -->
+
       <body name="front_left_thigh" pos="0.02 0.055 -0.02">
         <joint class="front_hip" name="front_left_hip" type="ball"/>
         <geom class="front_leg" name="front_left_thigh_geom" type="capsule" fromto="0 0 0 0.01 0.02 -0.08" size="0.02"/>
         <site name="front_left_thigh_site" pos="0.005 0.01 -0.04" size="0.01"/>
-        
+
         <body name="front_left_shin" pos="0.01 0.02 -0.08">
           <joint class="front_knee" name="front_left_knee" type="hinge"/>
           <geom class="front_leg" name="front_left_shin_geom" type="capsule" fromto="0 0 0 0 0.01 -0.095" size="0.015"/>
           <site name="front_left_shin_site" pos="0 0.005 -0.047" size="0.01"/>
-          
+
           <body name="front_left_foot" pos="0 0.01 -0.095">
             <joint class="front_ankle" name="front_left_ankle" type="hinge"/>
             <geom class="front_foot" name="front_left_foot_geom" type="capsule" fromto="0 0 0 0.03 0.005 -0.015" size="0.012"/>
@@ -141,18 +119,17 @@
           </body>
         </body>
       </body>
-      
-      <!-- ========== FRONT RIGHT LEG ========== -->
+
       <body name="front_right_thigh" pos="0.02 -0.055 -0.02">
         <joint class="front_hip" name="front_right_hip" type="ball"/>
         <geom class="front_leg" name="front_right_thigh_geom" type="capsule" fromto="0 0 0 0.01 -0.02 -0.08" size="0.02"/>
         <site name="front_right_thigh_site" pos="0.005 -0.01 -0.04" size="0.01"/>
-        
+
         <body name="front_right_shin" pos="0.01 -0.02 -0.08">
           <joint class="front_knee" name="front_right_knee" type="hinge"/>
           <geom class="front_leg" name="front_right_shin_geom" type="capsule" fromto="0 0 0 0 -0.01 -0.095" size="0.015"/>
           <site name="front_right_shin_site" pos="0 -0.005 -0.047" size="0.01"/>
-          
+
           <body name="front_right_foot" pos="0 -0.01 -0.095">
             <joint class="front_ankle" name="front_right_ankle" type="hinge"/>
             <geom class="front_foot" name="front_right_foot_geom" type="capsule" fromto="0 0 0 0.03 -0.005 -0.015" size="0.012"/>
@@ -160,30 +137,27 @@
           </body>
         </body>
       </body>
-      
-      <!-- ========== TRUNK ========== -->
+
       <body name="trunk" pos="-0.06 0 0">
         <joint class="torso" name="spine_chest" type="ball" pos="0.02 0 0" range="0 35"/>
         <geom class="torso" name="trunk_geom" type="box" size="0.02 0.03 0.025"/>
         <site name="trunk_site" pos="0 0 0" size="0.01"/>
-        
-        <!-- ========== HIPS ========== -->
+
         <body name="hips" pos="-0.05 0 0">
           <joint class="torso" name="spine_hips" type="ball" pos="0.02 0 0" range="0 35"/>
           <geom class="torso" name="hips_geom" type="box" size="0.042 0.05 0.038"/>
           <site name="hips_site" pos="0 0 0" size="0.01"/>
-          
-          <!-- ========== HIND LEFT LEG ========== -->
+
           <body name="hind_left_thigh" pos="-0.02 0.06 -0.02">
             <joint class="hind_hip" name="hind_left_hip" type="ball"/>
             <geom class="hind_leg" name="hind_left_thigh_geom" type="capsule" fromto="0 0 0 -0.015 0.025 -0.09" size="0.025"/>
             <site name="hind_left_thigh_site" pos="-0.007 0.012 -0.045" size="0.01"/>
-            
+
             <body name="hind_left_shin" pos="-0.015 0.025 -0.09">
               <joint class="hind_knee" name="hind_left_knee" type="hinge"/>
               <geom class="hind_leg" name="hind_left_shin_geom" type="capsule" fromto="0 0 0 0 0.015 -0.08" size="0.018"/>
               <site name="hind_left_shin_site" pos="0 0.007 -0.04" size="0.01"/>
-              
+
               <body name="hind_left_foot" pos="0 0.015 -0.08">
                 <joint class="hind_ankle" name="hind_left_ankle" type="hinge"/>
                 <geom class="hind_foot" name="hind_left_foot_geom" type="capsule" fromto="0 0 0 0.035 0.008 -0.018" size="0.014"/>
@@ -191,18 +165,17 @@
               </body>
             </body>
           </body>
-          
-          <!-- ========== HIND RIGHT LEG ========== -->
+
           <body name="hind_right_thigh" pos="-0.02 -0.06 -0.02">
             <joint class="hind_hip" name="hind_right_hip" type="ball"/>
             <geom class="hind_leg" name="hind_right_thigh_geom" type="capsule" fromto="0 0 0 -0.015 -0.025 -0.09" size="0.025"/>
             <site name="hind_right_thigh_site" pos="-0.007 -0.012 -0.045" size="0.01"/>
-            
+
             <body name="hind_right_shin" pos="-0.015 -0.025 -0.09">
               <joint class="hind_knee" name="hind_right_knee" type="hinge"/>
               <geom class="hind_leg" name="hind_right_shin_geom" type="capsule" fromto="0 0 0 0 -0.015 -0.08" size="0.018"/>
               <site name="hind_right_shin_site" pos="0 -0.007 -0.04" size="0.01"/>
-              
+
               <body name="hind_right_foot" pos="0 -0.015 -0.08">
                 <joint class="hind_ankle" name="hind_right_ankle" type="hinge"/>
                 <geom class="hind_foot" name="hind_right_foot_geom" type="capsule" fromto="0 0 0 0.035 -0.008 -0.018" size="0.014"/>
@@ -210,39 +183,37 @@
               </body>
             </body>
           </body>
-          
-          <!-- ========== TAIL ========== -->
-      <body name="tail_1" pos="-0.05 0 0.01">
-        <joint class="tail_base" name="tail_joint_1" type="ball"/>
-        <geom class="tail" name="tail_1_geom" type="capsule" fromto="0 0 0 -0.09 0 0.03" size="0.018"/>
-        <site name="tail_1_site" pos="-0.045 0 0.015" size="0.01"/>
 
-        <body name="tail_2" pos="-0.09 0 0.03">
-          <joint class="tail_mid" name="tail_joint_2" type="ball"/>
-          <geom class="tail" name="tail_2_geom" type="capsule" fromto="0 0 0 -0.08 0 0.02" size="0.014"/>
-          <site name="tail_2_site" pos="-0.04 0 0.01" size="0.01"/>
+          <!-- ========== TAIL (2 DOF per segment, no twist) ========== -->
+          <body name="tail_1" pos="-0.05 0 0.01">
+            <!-- Replace ball with 2 hinges: yaw/pitch only (no roll about tail axis) -->
+            <joint class="tail" name="tail_joint_1_y" type="hinge" axis="0 1 0" range="-60 60" damping="0.3"/>
+            <joint class="tail" name="tail_joint_1_z" type="hinge" axis="0 0 1" range="-60 60" damping="0.3"/>
+            <geom class="tail" name="tail_1_geom" type="capsule" fromto="0 0 0 -0.09 0 0.03" size="0.018"/>
+            <site name="tail_1_site" pos="-0.045 0 0.015" size="0.01"/>
 
-          <body name="tail_3" pos="-0.08 0 0.02">
-            <joint class="tail_tip" name="tail_joint_3" type="ball"/>
-            <geom class="tail" name="tail_3_geom" type="capsule" fromto="0 0 0 -0.07 0 0.01" size="0.01"/>
-            <site name="tail_3_site" pos="-0.035 0 0.005" size="0.01"/>
+            <body name="tail_2" pos="-0.09 0 0.03">
+              <joint class="tail" name="tail_joint_2_y" type="hinge" axis="0 1 0" range="-60 60" damping="0.3"/>
+              <joint class="tail" name="tail_joint_2_z" type="hinge" axis="0 0 1" range="-60 60" damping="0.3"/>
+              <geom class="tail" name="tail_2_geom" type="capsule" fromto="0 0 0 -0.08 0 0.02" size="0.014"/>
+              <site name="tail_2_site" pos="-0.04 0 0.01" size="0.01"/>
+
+              <body name="tail_3" pos="-0.08 0 0.02">
+                <joint class="tail" name="tail_joint_3_y" type="hinge" axis="0 1 0" range="-60 60" damping="0.3"/>
+                <joint class="tail" name="tail_joint_3_z" type="hinge" axis="0 0 1" range="-60 60" damping="0.3"/>
+                <geom class="tail" name="tail_3_geom" type="capsule" fromto="0 0 0 -0.07 0 0.01" size="0.01"/>
+                <site name="tail_3_site" pos="-0.035 0 0.005" size="0.01"/>
+              </body>
+            </body>
           </body>
-        </body>
-      </body>
 
-          
         </body>
       </body>
     </body>
   </worldbody>
-  
-  <!-- ==================== ACTUATORS ==================== -->
-  <!-- Position actuators with PD control for stable RL training -->
-  <!-- ==================== ACTUATORS ==================== -->
-  <!-- 3-axis torque control for ALL ball joints (each ball joint gets 3 motors) -->
-  <actuator>
 
-    <!-- ========== NECK/HEAD (ball joints) ========= -->
+  <!-- ==================== ACTUATORS ==================== -->
+  <actuator>
     <motor name="neck_base_x" joint="neck_base" gear="5 0 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="neck_base_y" joint="neck_base" gear="0 5 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="neck_base_z" joint="neck_base" gear="0 0 5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
@@ -251,7 +222,6 @@
     <motor name="neck_head_y" joint="neck_head" gear="0 5 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="neck_head_z" joint="neck_head" gear="0 0 5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
 
-    <!-- ========== SPINE (ball joints) ========= -->
     <motor name="spine_chest_x" joint="spine_chest" gear="10 0 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="spine_chest_y" joint="spine_chest" gear="0 10 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="spine_chest_z" joint="spine_chest" gear="0 0 10" ctrllimited="true" ctrlrange="-0.5 0.5"/>
@@ -260,75 +230,55 @@
     <motor name="spine_hips_y" joint="spine_hips" gear="0 10 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="spine_hips_z" joint="spine_hips" gear="0 0 10" ctrllimited="true" ctrlrange="-0.5 0.5"/>
 
-    <!-- ========== FRONT LEFT (hip is ball) ========= -->
     <motor name="fl_hip_x" joint="front_left_hip" gear="12 0 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="fl_hip_y" joint="front_left_hip" gear="0 12 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="fl_hip_z" joint="front_left_hip" gear="0 0 12" ctrllimited="true" ctrlrange="-0.5 0.5"/>
-
     <motor name="fl_knee" joint="front_left_knee" gear="10" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="fl_ankle" joint="front_left_ankle" gear="7" ctrllimited="true" ctrlrange="-0.5 0.5"/>
 
-    <!-- ========== FRONT RIGHT (hip is ball) ========= -->
     <motor name="fr_hip_x" joint="front_right_hip" gear="12 0 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="fr_hip_y" joint="front_right_hip" gear="0 12 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="fr_hip_z" joint="front_right_hip" gear="0 0 12" ctrllimited="true" ctrlrange="-0.5 0.5"/>
-
     <motor name="fr_knee" joint="front_right_knee" gear="10" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="fr_ankle" joint="front_right_ankle" gear="7" ctrllimited="true" ctrlrange="-0.5 0.5"/>
 
-    <!-- ========== HIND LEFT (hip is ball) ========= -->
     <motor name="hl_hip_x" joint="hind_left_hip" gear="12 0 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hl_hip_y" joint="hind_left_hip" gear="0 12 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hl_hip_z" joint="hind_left_hip" gear="0 0 12" ctrllimited="true" ctrlrange="-0.5 0.5"/>
-
     <motor name="hl_knee" joint="hind_left_knee" gear="10" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hl_ankle" joint="hind_left_ankle" gear="7" ctrllimited="true" ctrlrange="-0.5 0.5"/>
 
-    <!-- ========== HIND RIGHT (hip is ball) ========= -->
     <motor name="hr_hip_x" joint="hind_right_hip" gear="12 0 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hr_hip_y" joint="hind_right_hip" gear="0 12 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hr_hip_z" joint="hind_right_hip" gear="0 0 12" ctrllimited="true" ctrlrange="-0.5 0.5"/>
-
     <motor name="hr_knee" joint="hind_right_knee" gear="10" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hr_ankle" joint="hind_right_ankle" gear="7" ctrllimited="true" ctrlrange="-0.5 0.5"/>
 
-    <!-- ========== TAIL (ball joints) ========= -->
-    <motor name="tail_1_x" joint="tail_joint_1" gear="5 0 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
-    <motor name="tail_1_y" joint="tail_joint_1" gear="0 5 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
-    <motor name="tail_1_z" joint="tail_joint_1" gear="0 0 5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
-
-    <motor name="tail_2_x" joint="tail_joint_2" gear="5 0 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
-    <motor name="tail_2_y" joint="tail_joint_2" gear="0 5 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
-    <motor name="tail_2_z" joint="tail_joint_2" gear="0 0 5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
-
-    <motor name="tail_3_x" joint="tail_joint_3" gear="5 0 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
-    <motor name="tail_3_y" joint="tail_joint_3" gear="0 5 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
-    <motor name="tail_3_z" joint="tail_joint_3" gear="0 0 5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
-
+    <!-- Tail actuators: 2 per tail segment (no twist axis exists) -->
+    <motor name="tail_1_y" joint="tail_joint_1_y" gear="5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
+    <motor name="tail_1_z" joint="tail_joint_1_z" gear="5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
+    <motor name="tail_2_y" joint="tail_joint_2_y" gear="5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
+    <motor name="tail_2_z" joint="tail_joint_2_z" gear="5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
+    <motor name="tail_3_y" joint="tail_joint_3_y" gear="5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
+    <motor name="tail_3_z" joint="tail_joint_3_z" gear="5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
   </actuator>
 
-  
   <!-- ==================== SENSORS ==================== -->
-  <!-- Organized by type for efficient observation vector construction -->
   <sensor>
-    <!-- === IMU (9 dims: 3 accel + 3 gyro + 3 vel) === -->
     <accelerometer name="imu_acc" site="chest_site"/>
     <gyro name="imu_gyro" site="chest_site"/>
     <velocimeter name="imu_vel" site="chest_site"/>
-    
-    <!-- === Foot contacts (4 dims - critical for gait) === -->
+
     <touch name="touch_fl" site="front_left_foot_site"/>
     <touch name="touch_fr" site="front_right_foot_site"/>
     <touch name="touch_hl" site="hind_left_foot_site"/>
     <touch name="touch_hr" site="hind_right_foot_site"/>
 
-    <!-- === Trunk sensors (accelerometer + velocimeter) === -->
     <accelerometer name="acc_trunk" site="trunk_site"/>
     <velocimeter name="vel_trunk" site="trunk_site"/>
     <accelerometer name="acc_hips" site="hips_site"/>
     <velocimeter name="vel_hips" site="hips_site"/>
 
-    <!-- === Leg sensors (thigh + shin accelerometer + velocimeter) === -->
     <accelerometer name="acc_fl_thigh" site="front_left_thigh_site"/>
     <velocimeter name="vel_fl_thigh" site="front_left_thigh_site"/>
     <accelerometer name="acc_fl_shin" site="front_left_shin_site"/>
@@ -357,7 +307,6 @@
     <accelerometer name="acc_hr_foot" site="hind_right_foot_site"/>
     <velocimeter name="vel_hr_foot" site="hind_right_foot_site"/>
 
-    <!-- === Ball joint orientations (11 joints × 4 quat = 44 dims) === -->
     <ballquat name="q_neck_base" joint="neck_base"/>
     <ballquat name="q_neck_head" joint="neck_head"/>
     <ballquat name="q_spine_chest" joint="spine_chest"/>
@@ -366,11 +315,7 @@
     <ballquat name="q_fr_hip" joint="front_right_hip"/>
     <ballquat name="q_hl_hip" joint="hind_left_hip"/>
     <ballquat name="q_hr_hip" joint="hind_right_hip"/>
-    <ballquat name="q_tail1" joint="tail_joint_1"/>
-    <ballquat name="q_tail2" joint="tail_joint_2"/>
-    <ballquat name="q_tail3" joint="tail_joint_3"/>
-    
-    <!-- === Hinge joint positions (8 dims) === -->
+
     <jointpos name="p_fl_knee" joint="front_left_knee"/>
     <jointpos name="p_fl_ankle" joint="front_left_ankle"/>
     <jointpos name="p_fr_knee" joint="front_right_knee"/>
@@ -379,8 +324,15 @@
     <jointpos name="p_hl_ankle" joint="hind_left_ankle"/>
     <jointpos name="p_hr_knee" joint="hind_right_knee"/>
     <jointpos name="p_hr_ankle" joint="hind_right_ankle"/>
-    
-    <!-- === Ball joint angular velocities (11 × 3 = 33 dims) === -->
+
+    <!-- Tail sensors updated: hinges instead of ball joints -->
+    <jointpos name="p_tail1_y" joint="tail_joint_1_y"/>
+    <jointpos name="p_tail1_z" joint="tail_joint_1_z"/>
+    <jointpos name="p_tail2_y" joint="tail_joint_2_y"/>
+    <jointpos name="p_tail2_z" joint="tail_joint_2_z"/>
+    <jointpos name="p_tail3_y" joint="tail_joint_3_y"/>
+    <jointpos name="p_tail3_z" joint="tail_joint_3_z"/>
+
     <ballangvel name="w_neck_base" joint="neck_base"/>
     <ballangvel name="w_neck_head" joint="neck_head"/>
     <ballangvel name="w_spine_chest" joint="spine_chest"/>
@@ -389,11 +341,7 @@
     <ballangvel name="w_fr_hip" joint="front_right_hip"/>
     <ballangvel name="w_hl_hip" joint="hind_left_hip"/>
     <ballangvel name="w_hr_hip" joint="hind_right_hip"/>
-    <ballangvel name="w_tail1" joint="tail_joint_1"/>
-    <ballangvel name="w_tail2" joint="tail_joint_2"/>
-    <ballangvel name="w_tail3" joint="tail_joint_3"/>
-    
-    <!-- === Hinge joint velocities (8 dims) === -->
+
     <jointvel name="v_fl_knee" joint="front_left_knee"/>
     <jointvel name="v_fl_ankle" joint="front_left_ankle"/>
     <jointvel name="v_fr_knee" joint="front_right_knee"/>
@@ -402,56 +350,40 @@
     <jointvel name="v_hl_ankle" joint="hind_left_ankle"/>
     <jointvel name="v_hr_knee" joint="hind_right_knee"/>
     <jointvel name="v_hr_ankle" joint="hind_right_ankle"/>
-    
-    <!-- === Frame orientation (for reward shaping) === -->
+
+    <jointvel name="v_tail1_y" joint="tail_joint_1_y"/>
+    <jointvel name="v_tail1_z" joint="tail_joint_1_z"/>
+    <jointvel name="v_tail2_y" joint="tail_joint_2_y"/>
+    <jointvel name="v_tail2_z" joint="tail_joint_2_z"/>
+    <jointvel name="v_tail3_y" joint="tail_joint_3_y"/>
+    <jointvel name="v_tail3_z" joint="tail_joint_3_z"/>
+
     <framequat name="chest_orient" objtype="body" objname="chest"/>
   </sensor>
-  
+
   <!-- ==================== KEYFRAMES ==================== -->
   <keyframe>
-    <!-- Stable quadruped stance - legs slightly bent, weight distributed -->
-    <!-- qpos layout (59 total):
-         0-6: root free joint (pos x,y,z + quat w,x,y,z)
-         7-10: neck_base (quat)
-         11-14: neck_head (quat)
-         15-18: front_left_hip (quat)
-         19: front_left_knee (hinge)
-         20: front_left_ankle (hinge)
-         21-24: front_right_hip (quat)
-         25: front_right_knee (hinge)
-         26: front_right_ankle (hinge)
-         27-30: spine_chest (quat)
-         31-34: spine_hips (quat)
-         35-38: hind_left_hip (quat)
-         39: hind_left_knee (hinge)
-         40: hind_left_ankle (hinge)
-         41-44: hind_right_hip (quat)
-         45: hind_right_knee (hinge)
-         46: hind_right_ankle (hinge)
-         47-50: tail_joint_1 (quat)
-         51-54: tail_joint_2 (quat)
-         55-58: tail_joint_3 (quat)
-    -->
-<key name="quad_stance" qpos="
-  0 0 0.17  1 0 0 0
-  1 0 0 0
-  1 0 0 0
+    <!-- Updated: tail joints are now 6 hinge angles (2 per segment), not 3 quats -->
+    <key name="quad_stance" qpos="
+      0 0 0.17  1 0 0 0
+      1 0 0 0
+      1 0 0 0
 
-  0.9848 0 -0.1736 0   1.20  -0.85
-  0.9848 0 -0.1736 0   1.20  -0.85
+      0.9848 0 -0.1736 0   1.20  -0.85
+      0.9848 0 -0.1736 0   1.20  -0.85
 
-  1 0 0 0
-  1 0 0 0
+      1 0 0 0
+      1 0 0 0
 
-  0.9763 0 -0.2164 0   1.30  -0.95
-  0.9763 0 -0.2164 0   1.30  -0.95
+      0.9763 0 -0.2164 0   1.30  -0.95
+      0.9763 0 -0.2164 0   1.30  -0.95
 
-  1 0 0 0
-  1 0 0 0
-  1 0 0 0
-"/>
+      0 0
+      0 0
+      0 0
+    "/>
   </keyframe>
-  
+
   <!-- ==================== CONTACT EXCLUSIONS ==================== -->
   <contact>
     <exclude body1="chest" body2="trunk"/>
