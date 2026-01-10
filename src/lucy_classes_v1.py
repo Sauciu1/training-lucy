@@ -398,8 +398,8 @@ class LucyStandingWrapper(gym.Wrapper):
         self,
         env: LucyEnv,
         height_target_dicts=[
-            {"part": "chest", "target_height": [0.16, 0.25], "reward_weight": 2.0},
-            {"part": "hips", "target_height": [0.16, 0.25], "reward_weight": 1.0},
+            {"part": "chest", "target_height": [0.18, 0.4], "reward_weight": 1.0},
+            {"part": "hips", "target_height": [0.18, 0.4], "reward_weight": 0.5},
         ],
         upright_parts: list[str] = ["chest", "head", "hips"],
         upright_weight=1.0,
@@ -470,7 +470,7 @@ class LucyStandingWrapper(gym.Wrapper):
                     min([abs(part_height - h) for h in ht_dict["target_height"]])
                 )
 
-            r = ht_dict["reward_weight"] * np.exp(-5 * height_error**0.5)
+            r = ht_dict["reward_weight"] * np.exp(-1000 * height_error)
 
 
             output_dict[ht_dict["part"]] = {
@@ -735,6 +735,7 @@ class LucyWalkingWrapper(LucyStandingWrapper):
         self.standing_reward_discount_factor = standing_reward_discount_factor
 
         self._prev_x = None
+        self._prev_foot_vels = None
 
 
     @property
@@ -749,11 +750,15 @@ class LucyWalkingWrapper(LucyStandingWrapper):
 
     @property
     def _gait_reward(self):
-        """Reward for gait based on upward z-velocity of feet.
+        """Reward for gait based on limb accelerations.
 
-        Computes mean upward z velocity across available foot bodies and
-        returns (reward, mean_z_velocity). Upward motion (positive z)
-        is rewarded proportionally to `self.gait_weight`.
+        Computes mean linear acceleration magnitude across foot bodies by
+        differencing successive velocity samples (a = dv/dt). Rewards are
+        proportional to `self.gait_weight * mean_accel`. Only applies when
+        the agent has positive forward velocity (encourages accelerations while
+        moving forward).
+
+        Returns (reward, mean_accel).
         """
         foot_names = [
             "front_left_foot_geom",
@@ -762,22 +767,40 @@ class LucyWalkingWrapper(LucyStandingWrapper):
             "hind_right_foot_geom",
         ]
 
+        # Gather current linear velocities for each foot
         velocities = [self.env.get_part_velocity(name) for name in foot_names]
-        foot_z_vels = [
-            v["linear"][2] for v in velocities if v is not None and "linear" in v
-        ]
-        if not foot_z_vels:
+        lin_vels = [v["linear"] for v in velocities if v is not None and "linear" in v]
+        if not lin_vels:
             return 0.0, 0.0
 
-        # Reward positive (upward) z-velocity; average positive component
-        up_vels = [max(0.0, v) for v in foot_z_vels]
-        mean_up = float(sum(up_vels) / len(up_vels))
-        gait_reward = float(self.gait_weight * mean_up)
+        # Initialize storage for previous velocities if not present
+        if not hasattr(self, "_prev_foot_vels") or self._prev_foot_vels is None:
+            self._prev_foot_vels = {}
 
-        # Scale by forward vector to encourage gait only when moving forward
-        _, forward_vel = self._forward_reward
-        gait_reward *= min(self.gait_weight, forward_vel*gait_reward)
-        return gait_reward, float(sum(foot_z_vels) / len(foot_z_vels))
+        acc_mags = []
+        for name, v in zip(foot_names, velocities):
+            if v is None or "linear" not in v:
+                continue
+            cur = np.array(v["linear"], dtype=float)
+            prev = self._prev_foot_vels.get(name)
+            if prev is None:
+                # First sample -> assume zero accel
+                acc = np.zeros_like(cur)
+            else:
+                dt = float(getattr(self.unwrapped, "dt", 0.0)) or 1e-8
+                acc = (cur - prev) / dt
+
+            self._prev_foot_vels[name] = cur.copy() 
+            acc_mags.append(float(np.linalg.norm(acc)))
+
+        if not acc_mags:
+            return 0.0, 0.0
+
+        mean_acc = np.mean(acc_mags)
+
+        # Reward proportional to mean limb acceleration magnitude
+        gait_reward = float(self.gait_weight * mean_acc)
+        return gait_reward, mean_acc
 
     def _walking_components(self, action) -> dict:
         """Compute walking-specific reward components for a single step.
@@ -788,8 +811,8 @@ class LucyWalkingWrapper(LucyStandingWrapper):
         # Ensure we have a baseline x position
         forward_reward, forward_vel = self._forward_reward
 
-        # Gait reward based on upward z-velocity of feet
-        gait_reward, feet_z_mean = self._gait_reward
+        # Gait reward based on foot linear accelerations (magnitude)
+        gait_reward, feet_acc_mean = self._gait_reward
         # Also include feet-down count for diagnostics
         foot_contacts = self.unwrapped.get_foot_contacts()
         n_feet_down = int(sum(foot_contacts.values()))
@@ -804,7 +827,7 @@ class LucyWalkingWrapper(LucyStandingWrapper):
             "forward_reward": float(forward_reward),
             "gait_reward": float(gait_reward),
             "feet_down": n_feet_down,
-            "feet_z_mean": float(feet_z_mean),
+            "feet_acc_mean": float(feet_acc_mean),
             "ctrl_cost": float(ctrl_cost),
             "x_position": float(self._prev_x),
         }
@@ -842,4 +865,5 @@ class LucyWalkingWrapper(LucyStandingWrapper):
 
     def reset(self, **kwargs):
         self._prev_x = None
+        self._prev_foot_vels = None
         return super().reset(**kwargs)
