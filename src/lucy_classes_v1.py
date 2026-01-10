@@ -484,8 +484,8 @@ class LucyStandingWrapper(gym.Wrapper):
         self,
         env: LucyEnv,
         height_target_dicts=[
-            {"part": "chest", "target_height": [0.22, 0.4], "reward_weight": 1.0},
-            {"part": "hips", "target_height": [0.22, 0.4], "reward_weight": 0.5},
+            {"part": "chest", "target_height": [0.25, 0.4], "reward_weight": 1.0},
+            {"part": "hips", "target_height": [0.25, 0.4], "reward_weight": 0.5},
             {"part": "head", "target_height": [0.4, 0.5], "reward_weight": 0.3},
         ],
         upright_parts: list[str] = ["chest", "head", "hips"],

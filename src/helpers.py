@@ -125,3 +125,12 @@ def print_training_summary(df=None, rewards=None, lengths=None, last_n=100):
 
     if l is not None:
         print(f"  Final avg length (last {last_n} eps): {np.mean(l[-last_n:]):.1f}")
+
+
+if __name__ == "__main__":
+    print("This is a helper module for plotting training metrics.")
+    import sys
+
+
+    training_data = sys.argv[1]
+

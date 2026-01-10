@@ -1,7 +1,7 @@
 <mujoco model="lucy">
   <!-- Lucy: Pre-hominid ancestor for quadrupedal/bipedal RL locomotion -->
   <compiler angle="degree" coordinate="local" inertiafromgeom="true" autolimits="true"/>
-  <option integrator="Euler" timestep="0.004" gravity="0 0 -9.81">
+  <option integrator="Euler" timestep="0.003" gravity="0 0 -9.81">
     <flag warmstart="enable" multiccd="enable"/>
   </option>
   <size nconmax="200" njmax="500"/>
