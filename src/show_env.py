@@ -1,4 +1,4 @@
-from src.lucy_classes_v0 import LucyEnv
+from src.old_lucy.lucy_classes_v0 import LucyEnv
 import numpy as np
 
 env = LucyEnv(render_mode="human")

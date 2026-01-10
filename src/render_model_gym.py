@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore", message=".*PPO on the GPU.*")
 
 from src import enforce_absolute_path
 from src.definitions import PROJECT_ROOT
-from src.lucy_classes_v0 import LucyEnv
+from src.old_lucy.lucy_classes_v0 import LucyEnv
 from src.ant import BipedalAntWrapper
 
 
@@ -132,9 +132,12 @@ def display_test_env(env, max_frames: int = 21, frame_skip:int = 1, attr_keys=No
 
 
 
-    frames, attrs = collect_frames(env, max_frames*frame_skip, attr_keys=attr_keys)
+    # Validate model interface when provided
+    if model is not None and not hasattr(model, "predict"):
+        raise ValueError("`model` must have a `predict(obs, deterministic=...)` method (Stable-Baselines style)")
 
-
+    # Forward model to frame collector so it can choose actions via model.predict
+    frames, attrs = collect_frames(env, max_frames*frame_skip, attr_keys=attr_keys, model=model)
 
     df = pd.DataFrame(attrs)
     df["cum_reward"] = df["reward"].cumsum()
@@ -145,7 +148,6 @@ def display_test_env(env, max_frames: int = 21, frame_skip:int = 1, attr_keys=No
         last_frame = frames[-1]
         last_attr = df.iloc[-1, :].to_dict()
     
-
 
     if frame_skip > 1:
         frames = frames[::frame_skip]

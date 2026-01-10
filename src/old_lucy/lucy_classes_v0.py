@@ -1,12 +1,13 @@
 """
 Custom Gymnasium environment for Lucy quadruped/bipedal locomotion.
 """
+
 import gymnasium as gym
 from gymnasium import spaces
 from gymnasium.envs.mujoco import MujocoEnv
 import numpy as np
 import mujoco
-
+import inspect
 
 import os
 from src.definitions import PROJECT_ROOT
@@ -15,20 +16,20 @@ from src.definitions import PROJECT_ROOT
 class LucyEnv(MujocoEnv):
     """
     Lucy locomotion environment.
-    
+
     Observation space (106 dims):
-        - qpos[2:]: positions excluding x,y (57 dims: z + orientations)  
+        - qpos[2:]: positions excluding x,y (57 dims: z + orientations)
         - qvel: velocities (47 dims)
         - sensor data from XML (optional, adds ~110 dims if used)
-    
+
     Action space (19 dims):
         - One action per actuator (motor torques normalized to [-1, 1])
     """
-    
+
     metadata = {
         "render_modes": ["human", "rgb_array", "depth_array"],
     }
-    
+
     def __init__(
         self,
         xml_file: str = None,
@@ -37,11 +38,11 @@ class LucyEnv(MujocoEnv):
         use_sensors: bool = False,
         render_mode: str = None,
         max_episode_seconds: float = None,
-        **kwargs
+        **kwargs,
     ):
         if xml_file is None:
             xml_file = os.path.join(PROJECT_ROOT, "animals", "lucy_v0.xml")
-        
+
         self.reset_noise_scale = reset_noise_scale
         self.use_sensors = use_sensors
         self._init_qpos = None
@@ -50,30 +51,31 @@ class LucyEnv(MujocoEnv):
         self._max_episode_seconds = max_episode_seconds
         # Simulated-time counter (seconds)
         self._sim_time = 0.0
-        
+
         # Calculate observation space size
         # Will be set properly after model loads
         observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(104,), dtype=np.float64
         )
-        
+
         super().__init__(
             xml_file,
             frame_skip=frame_skip,
             observation_space=observation_space,
             render_mode=render_mode,
-
-            **kwargs
+            **kwargs,
         )
-        
+
         # Update observation space based on actual model
         obs_dim = self._get_obs().shape[0]
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float64
         )
-        
+
         # Load keyframe "quad_stance" for proper initial pose
-        keyframe_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_KEY, "quad_stance")
+        keyframe_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_KEY, "quad_stance"
+        )
         if keyframe_id >= 0:
             # Use keyframe qpos
             self._init_qpos = self.model.key_qpos[keyframe_id].copy()
@@ -82,16 +84,20 @@ class LucyEnv(MujocoEnv):
             # Fallback to default
             self._init_qpos = self.data.qpos.copy()
             self._init_qvel = self.data.qvel.copy()
-        
+
         # Cache body and geom IDs for reward computation
         self._chest_id = self.name_to_id("chest", "body")
         self._head_id = self.name_to_id("head", "body")
         self._floor_id = self.name_to_id("floor", "geom")
-        
+
         # Foot geom IDs for contact detection
         self._foot_geom_ids = {}
-        for name in ["front_left_foot_geom", "front_right_foot_geom", 
-                     "hind_left_foot_geom", "hind_right_foot_geom"]:
+        for name in [
+            "front_left_foot_geom",
+            "front_right_foot_geom",
+            "hind_left_foot_geom",
+            "hind_right_foot_geom",
+        ]:
             try:
                 self._foot_geom_ids[name] = mujoco.mj_name2id(
                     self.model, mujoco.mjtObj.mjOBJ_GEOM, name
@@ -99,7 +105,28 @@ class LucyEnv(MujocoEnv):
             except:
                 pass
 
-    def name_to_id(self, name: str, obj_type: object) -> int|None:
+
+    def get_part_velocity(self, part_name: str) -> dict | None:
+        """Return {'linear': np.array([vx,vy,vz]), 'angular': np.array([wx,wy,wz])} or None."""
+        # try body then geom -> body
+        body_id = self.name_to_id(part_name, "body")
+        if body_id is None or body_id < 0:
+            gid = self.name_to_id(part_name, "geom")
+
+
+        body_id = int(self.model.geom_bodyid[gid])
+
+
+        xvel = getattr(self.data, "xvel", None)
+
+
+        if xvel is None:
+            return None
+        ang = np.array(xvel[body_id, :3], dtype=float)
+        lin = np.array(xvel[body_id, 3:6], dtype=float)
+        return {"linear": lin, "angular": ang, "linear_mag": float(np.linalg.norm(lin))}
+
+    def name_to_id(self, name: str, obj_type: object) -> int | None:
         """Convert a name to its Mujoco ID.
 
         Accepts either an object-type string ("body", "geom", etc.) or
@@ -128,8 +155,7 @@ class LucyEnv(MujocoEnv):
         if obj_id < 0:
             return None
         return obj_id
-    
-    
+
     def _get_obs(self) -> np.ndarray:
         """
         Build observation vector.
@@ -137,45 +163,45 @@ class LucyEnv(MujocoEnv):
         """
         # Position (excluding global x, y for translation invariance)
         position = self.data.qpos[2:].copy()  # 57 dims
-        
+
         # Velocity
         velocity = self.data.qvel.copy()  # 47 dims
-        
+
         obs = np.concatenate([position, velocity])
-        
+
         if self.use_sensors:
             # Add sensor readings
             sensor_data = self.data.sensordata.copy()
             obs = np.concatenate([obs, sensor_data])
-        
+
         return obs
-    
+
     def step(self, action: np.ndarray):
         """Execute one timestep."""
         # Get position before step for velocity reward
         x_before = self.data.qpos[0]
-        
+
         # Apply action
         self.do_simulation(action, self.frame_skip)
-        
+
         # Get new observation
         obs = self._get_obs()
-        
+
         # Compute reward components
         x_after = self.data.qpos[0]
         forward_velocity = (x_after - x_before) / self.dt
-        
+
         # Basic reward: forward progress + alive bonus - control cost
         forward_reward = forward_velocity
         alive_bonus = 1.0
         ctrl_cost = 0.001 * np.sum(np.square(action))
-        
+
         reward = forward_reward + alive_bonus - ctrl_cost
-        
+
         # Termination conditions
         z_pos = self.data.qpos[2]
         chest_height = self.data.xpos[self._chest_id, 2]
-        
+
         # Terminate if fallen (chest too low or tilted too much)
         terminated = chest_height < 0.05
 
@@ -183,7 +209,10 @@ class LucyEnv(MujocoEnv):
         # self.dt is seconds per step (timestep * frame_skip)
         self._sim_time += self.dt
         truncated = False
-        if self._max_episode_seconds is not None and self._sim_time >= self._max_episode_seconds:
+        if (
+            self._max_episode_seconds is not None
+            and self._sim_time >= self._max_episode_seconds
+        ):
             truncated = True
 
         info = {
@@ -194,25 +223,23 @@ class LucyEnv(MujocoEnv):
             "elapsed_sim_time": self._sim_time,
             "max_episode_seconds": self._max_episode_seconds,
         }
-        
+
         return obs, reward, terminated, truncated, info
-    
+
     def reset_model(self) -> np.ndarray:
         """Reset to initial state with noise."""
         noise_scale = self.reset_noise_scale
 
-
-        
         qpos = self._init_qpos + noise_scale * self.np_random.uniform(
             low=-1, high=1, size=self.model.nq
         )
         qvel = self._init_qvel + noise_scale * self.np_random.uniform(
             low=-0.1, high=0.1, size=self.model.nv
         )
-        
+
         # Keep root quaternion normalized
         qpos[3:7] = qpos[3:7] / np.linalg.norm(qpos[3:7])
-        
+
         # Prevent root from being lowered below initial pose to avoid leg-foot clipping
         root_z_idx = 2
         qpos[root_z_idx] = 0.2
@@ -222,48 +249,50 @@ class LucyEnv(MujocoEnv):
         self._sim_time = 0.0
 
         return self._get_obs()
-    
+
     def get_foot_contacts(self) -> dict:
         """Return dict of which feet are in contact with floor."""
         contacts = {name: False for name in self._foot_geom_ids}
-        
+
         for i in range(self.data.ncon):
             contact = self.data.contact[i]
             g1, g2 = contact.geom1, contact.geom2
-            
+
             for name, gid in self._foot_geom_ids.items():
-                if (g1 == gid and g2 == self._floor_id) or \
-                   (g2 == gid and g1 == self._floor_id):
+                if (g1 == gid and g2 == self._floor_id) or (
+                    g2 == gid and g1 == self._floor_id
+                ):
                     contacts[name] = True
-        
+
         return contacts
-    
+
     def get_body_contacts(self) -> list:
         """Return list of body parts touching floor (excluding feet)."""
         body_contacts = []
-        
+
         for i in range(self.data.ncon):
             contact = self.data.contact[i]
             g1, g2 = contact.geom1, contact.geom2
-            
+
             # Check if floor is involved
             if g1 != self._floor_id and g2 != self._floor_id:
                 continue
-            
+
             other_geom = g2 if g1 == self._floor_id else g1
-            
+
             # Skip if it's a foot
             if other_geom in self._foot_geom_ids.values():
                 continue
-            
+
             # Get geom name
 
-            geom_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, other_geom)
+            geom_name = mujoco.mj_id2name(
+                self.model, mujoco.mjtObj.mjOBJ_GEOM, other_geom
+            )
             if geom_name:
                 body_contacts.append(geom_name)
-        
+
         return body_contacts
-    
 
 
 """
@@ -277,7 +306,7 @@ import numpy as np
 class LucyStandingWrapper(gym.Wrapper):
     """
     Wrapper that rewards Lucy for standing still and upright.
-    
+
     Reward components:
         + Height bonus: reward for keeping chest at target height
         + Upright bonus: reward for keeping chest level (not tilted)
@@ -285,24 +314,24 @@ class LucyStandingWrapper(gym.Wrapper):
         - Fall penalty: terminate and penalize if chest falls below threshold
         - Body contact penalty: penalize non-foot parts touching ground
     """
-    
+
     def __init__(
         self,
         env,
-        target_height: list = [0.30,0.35],
-        height_weight: float = 2.0,
-        height_parts = ["chest", "hips"],
-        upright_weight: float = 1.0,
-        stillness_weight: float = 0.5,
-        body_contact_penalty: float = -1.0,
-        fall_threshold: list = [0.01, 1.0],
-        fall_penalty: float = -50.0,
-        head_direction_cone_deg: float = 20,
-        head_direction_weight: float = 1.0,
-        
+        target_height=[0.2, 0.3],
+        height_weight=2.0,
+        height_parts=["chest", "hips"],
+        upright_weight=1.0,
+        stillness_weight=0.2,
+        body_contact_penalty=-2.0,
+        fall_threshold=[0.12, 0.7],
+        fall_penalty=-30.0,
+        head_direction_cone_deg=40.0,
+        head_direction_weight=0.1,
+        **kwargs,
     ):
-        super().__init__(env)
-        
+        super().__init__(env, **kwargs)
+
         self.target_height = target_height
         self.height_weight = height_weight
         self.upright_weight = upright_weight
@@ -315,7 +344,7 @@ class LucyStandingWrapper(gym.Wrapper):
         # Head direction params
         self.head_direction_cone_deg = head_direction_cone_deg
         self.head_direction_weight = head_direction_weight
-        
+
         # Get chest body ID
         self._chest_id = self.unwrapped.name_to_id("chest", "body")
         # Cache head id too (may be used by head_direction_reward)
@@ -324,6 +353,7 @@ class LucyStandingWrapper(gym.Wrapper):
     @property
     def xpos(self):
         return self.unwrapped.data.xpos
+
     @property
     def xmat(self):
         return self.unwrapped.data.xmat
@@ -347,7 +377,9 @@ class LucyStandingWrapper(gym.Wrapper):
             if self.target_height[0] < part_height < self.target_height[1]:
                 height_error = 0.0
             else:
-                height_error = abs(min([abs(part_height - h) for h in self.target_height]))
+                height_error = abs(
+                    min([abs(part_height - h) for h in self.target_height])
+                )
 
             r = self.height_weight * np.exp(-5 * height_error**0.5)
 
@@ -359,7 +391,6 @@ class LucyStandingWrapper(gym.Wrapper):
 
         return float(np.mean(rewards)), float(np.mean(heights))
 
-  
     @property
     def upright_reward(self):
         """Reward for upright posture of specified body parts."""
@@ -372,16 +403,18 @@ class LucyStandingWrapper(gym.Wrapper):
         upright_reward = self.upright_weight * max(0, upright_score)
 
         return upright_reward, upright_score
-    
+
     @property
     def stillness_reward(self):
         """Reward for not moving much"""
         qvel = self.unwrapped.data.qvel
         linear_vel = np.linalg.norm(qvel[:3])  # Root linear velocity
         angular_vel = np.linalg.norm(qvel[3:6])  # Root angular velocity
-        stillness_reward = self.stillness_weight * np.exp(-2 * (linear_vel + 0.5 * angular_vel))
+        stillness_reward = self.stillness_weight * np.exp(
+            -2 * (linear_vel + 0.5 * angular_vel)
+        )
         return stillness_reward
-    
+
     @property
     def head_direction_reward(self):
         """Return (reward, angle_deg) — simplified.
@@ -417,7 +450,14 @@ class LucyStandingWrapper(gym.Wrapper):
         contact_penalty = self.body_contact_penalty * len(body_contacts)
 
         # fall penalty and termination flag come from chest_height
-        fall_penalty = self.fall_penalty if (chest_height < self.fall_threshold[0] or chest_height > self.fall_threshold[1]) else 0.0
+        fall_penalty = (
+            self.fall_penalty
+            if (
+                chest_height < self.fall_threshold[0]
+                or chest_height > self.fall_threshold[1]
+            )
+            else 0.0
+        )
 
         return {
             "height_reward": float(height_reward),
@@ -431,11 +471,17 @@ class LucyStandingWrapper(gym.Wrapper):
             "contact_penalty": float(contact_penalty),
             "fall_penalty": float(fall_penalty),
         }
+    
+    def _stability_components(self) -> dict:
+        """height, upright, and head directon components only."""
+
+        
 
     def step(self, action):
         obs, base_reward, terminated, truncated, info = self.env.step(action)
 
         comps = self._standing_components()
+
 
         # if fall occurred, terminate
         if comps["fall_penalty"] != 0.0:
@@ -455,10 +501,9 @@ class LucyStandingWrapper(gym.Wrapper):
         # attach all computed diagnostics
         info.update(comps)
         return obs, reward, terminated, truncated, info
-    
+
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
-
 
 
 """
@@ -471,13 +516,13 @@ class LucyWalkingWrapper(LucyStandingWrapper):
     """
     Wrapper that rewards Lucy for walking forward while staying upright.
     Inherits standing rewards from LucyStandingWrapper.
-    
+
     Additional reward components:
         + Forward velocity: primary reward for moving in +x direction
         + Gait bonus: reward for proper foot contact patterns
         - Control cost: penalize excessive torque usage
     """
-    
+
     def __init__(
         self,
         env,
@@ -486,82 +531,161 @@ class LucyWalkingWrapper(LucyStandingWrapper):
         target_velocity: float = 0.5,
         gait_weight: float = 0.2,
         ctrl_cost_weight: float = 0.001,
-        # Standing params (passed to parent)
-        target_height: float = 0.12,
-        height_weight: float = 0.5,
-        upright_weight: float = 0.3,
+
         stillness_weight: float = 0.0,  # Disable stillness reward for walking
         body_contact_penalty: float = -2.0,
-        fall_threshold: float = 0.04,
+        standing_reward_discount_factor: float = 0.2,
+
+        **kwargs,
     ):
         # Initialize parent (standing wrapper)
         super().__init__(
             env,
-            target_height=target_height,
-            height_weight=height_weight,
-            upright_weight=upright_weight,
             stillness_weight=stillness_weight,
             body_contact_penalty=body_contact_penalty,
-            fall_threshold=fall_threshold,
+            **kwargs,
         )
-        
+
+        if isinstance(env, LucyStandingWrapper):
+            # Adaptively copy configuration from the existing standing wrapper
+            # so the walking wrapper inherits tuned params instead of defaults.
+            # Copy only simple configuration types to avoid copying large
+            # internal objects (model, data, etc.).
+            for name, val in env.__dict__.items():
+                # skip internal wrapper plumbing
+                if name.startswith("__") or name in ("env", "unwrapped"):
+                    continue
+
+                # copy simple scalar/sequence/dict config types
+                if isinstance(val, (int, float, str, bool, list, tuple, dict)):
+                    setattr(self, name, val)
+
         # Walking-specific params
         self.forward_weight = forward_weight
         self.target_velocity = target_velocity
         self.gait_weight = gait_weight
         self.ctrl_cost_weight = ctrl_cost_weight
-        
+        self.standing_reward_discount_factor = standing_reward_discount_factor
+
         self._prev_x = None
-    
-    def step(self, action):
-        # Track x position before step
-        if self._prev_x is None:
-            self._prev_x = self.unwrapped.data.qpos[0]
-        
-        # Get standing rewards from parent
-        obs, standing_reward, terminated, truncated, info = super().step(action)
-        
-        # === Forward velocity reward ===
-        x_pos = self.unwrapped.data.qpos[0]
-        forward_vel = (x_pos - self._prev_x) / self.unwrapped.dt
-        self._prev_x = x_pos
-        
-        # Reward moving toward target velocity, penalize backwards
-        if forward_vel > 0:
-            vel_ratio = forward_vel / self.target_velocity
-            forward_reward = self.forward_weight * min(vel_ratio, 1.5)
-        else:
-            forward_reward = self.forward_weight * forward_vel * 2
-        
-        # === Gait reward (encourage alternating foot contacts) ===
-        foot_contacts = self.unwrapped.get_foot_contacts()
-        n_feet_down = sum(foot_contacts.values())
-        gait_reward = self.gait_weight if 1 <= n_feet_down <= 3 else 0
-        
-        # === Control cost ===
-        ctrl_cost = self.ctrl_cost_weight * np.sum(np.square(action))
-        
-        # === Total reward (standing + walking) ===
-        reward = (
-            standing_reward +
-            forward_reward +
-            gait_reward -
-            ctrl_cost
+
+
+    @property
+    def _forward_reward(self):
+        """Reward for forward velocity toward target."""
+        x_pos = float(self.unwrapped.data.qpos[0])
+        dt = float(self.unwrapped.dt) if float(self.unwrapped.dt) != 0.0 else 1e-8
+
+        # Ensure we have a baseline x position
+        prev_x = (
+            self._prev_x
+            if self._prev_x is not None
+            else float(self.unwrapped.data.qpos[0])
         )
-        
-        # === Info ===
-        info.update({
-            "forward_vel": forward_vel,
-            "forward_reward": forward_reward,
-            "gait_reward": gait_reward,
-            "feet_down": n_feet_down,
-            "ctrl_cost": ctrl_cost,
-            "x_position": x_pos,
-            "standing_reward": standing_reward,
-        })
-        
-        return obs, reward, terminated, truncated, info
+
+        forward_vel = (x_pos - prev_x) / dt
+
+        if forward_vel > 0:
+            vel_ratio = forward_vel / float(self.target_velocity)
+            forward_reward = float(self.forward_weight * min(vel_ratio, 1.5))
+        else:
+            forward_reward = float(self.forward_weight * forward_vel * 2.0)
+
+        return forward_reward, forward_vel
     
+    @property
+    def _gait_reward(self):
+        """Reward for gait based on upward z-velocity of feet.
+
+        Computes mean upward z velocity across available foot bodies and
+        returns (reward, mean_z_velocity). Upward motion (positive z)
+        is rewarded proportionally to `self.gait_weight`.
+        """
+        foot_names = [
+            "front_left_foot_geom",
+            "front_right_foot_geom",
+            "hind_left_foot_geom",
+            "hind_right_foot_geom",
+        ]
+
+        velocities = [self.env.get_part_velocity(name) for name in foot_names]
+        foot_z_vels = [
+            v["linear"][2] for v in velocities if v is not None and "linear" in v
+        ]
+        if not foot_z_vels:
+            return 0.0, 0.0
+
+        # Reward positive (upward) z-velocity; average positive component
+        up_vels = [max(0.0, v) for v in foot_z_vels]
+        mean_up = float(sum(up_vels) / len(up_vels))
+        gait_reward = float(self.gait_weight * mean_up)
+        return gait_reward, float(sum(foot_z_vels) / len(foot_z_vels))
+
+    def _walking_components(self, action) -> dict:
+        """Compute walking-specific reward components for a single step.
+
+        Returns a dict with numeric values that `step()` can sum and attach to
+        `info`. This keeps the walking logic separated and testable.
+        """
+        # Ensure we have a baseline x position
+        forward_reward, forward_vel = self._forward_reward
+
+        # Gait reward based on upward z-velocity of feet
+
+
+        gait_reward, feet_z_mean = self._gait_reward
+        # Also include feet-down count for diagnostics
+        foot_contacts = self.unwrapped.get_foot_contacts()
+        n_feet_down = int(sum(foot_contacts.values()))
+
+        # Control cost
+        ctrl_cost = float(self.ctrl_cost_weight * np.sum(np.square(action)))
+
+        # Update internal prev_x for next step
+        self._prev_x = float(self.unwrapped.data.qpos[0])
+
+        return {
+            "forward_vel": float(forward_vel),
+            "forward_reward": float(forward_reward),
+            "gait_reward": float(gait_reward),
+            "feet_down": n_feet_down,
+            "feet_z_mean": float(feet_z_mean),
+            "ctrl_cost": float(ctrl_cost),
+            "x_position": float(self._prev_x),
+        }
+
+    def step(self, action):
+        """Step the environment and add walking components on top of standing.
+
+        Keeps `step()` concise by delegating walking computations to
+        `_walking_components(action)` and standing computations to the parent.
+        """
+        # Advance simulation and get standing reward from parent
+        obs, standing_reward, terminated, truncated, info = super().step(action)
+        standing_reward = standing_reward*self.standing_reward_discount_factor
+
+        # Compute walking components
+        comps = self._walking_components(action)
+
+
+        # Compose final reward (standing + walking - control cost)
+        reward = float(
+            standing_reward
+            + comps["forward_reward"]
+            + comps["gait_reward"]
+            - comps["ctrl_cost"]
+            + 0.5
+        )
+
+        # Attach diagnostics
+        comps["standing_reward"] = float(standing_reward)
+
+        # If fall occurred during standing, honor termination
+        # (parent already sets termination flag; keep it as-is)
+        info.update(comps)
+
+        return obs, reward, terminated, truncated, info
+
     def reset(self, **kwargs):
         self._prev_x = None
         return super().reset(**kwargs)
