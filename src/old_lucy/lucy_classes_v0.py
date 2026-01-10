@@ -1,4 +1,5 @@
 """
+OLD MODEL; DO NOT USE - see lucy_classes_v1.py for current version.
 Custom Gymnasium environment for Lucy quadruped/bipedal locomotion.
 """
 

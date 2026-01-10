@@ -212,23 +212,24 @@
           </body>
           
           <!-- ========== TAIL ========== -->
-          <body name="tail_1" pos="-0.05 0 0.01">
-            <joint class="tail_base" name="tail_joint_1" type="ball"/>
-            <geom class="tail" name="tail_1_geom" type="capsule" fromto="0 0 0 -0.045 0 0.015" size="0.018"/>
-            <site name="tail_1_site" pos="-0.022 0 0.007" size="0.01"/>
-            
-            <body name="tail_2" pos="-0.045 0 0.015">
-              <joint class="tail_mid" name="tail_joint_2" type="ball"/>
-              <geom class="tail" name="tail_2_geom" type="capsule" fromto="0 0 0 -0.04 0 0.01" size="0.014"/>
-              <site name="tail_2_site" pos="-0.02 0 0.005" size="0.01"/>
-              
-              <body name="tail_3" pos="-0.04 0 0.01">
-                <joint class="tail_tip" name="tail_joint_3" type="ball"/>
-                <geom class="tail" name="tail_3_geom" type="capsule" fromto="0 0 0 -0.035 0 0.005" size="0.01"/>
-                <site name="tail_3_site" pos="-0.017 0 0.002" size="0.01"/>
-              </body>
-            </body>
+      <body name="tail_1" pos="-0.05 0 0.01">
+        <joint class="tail_base" name="tail_joint_1" type="ball"/>
+        <geom class="tail" name="tail_1_geom" type="capsule" fromto="0 0 0 -0.09 0 0.03" size="0.018"/>
+        <site name="tail_1_site" pos="-0.045 0 0.015" size="0.01"/>
+
+        <body name="tail_2" pos="-0.09 0 0.03">
+          <joint class="tail_mid" name="tail_joint_2" type="ball"/>
+          <geom class="tail" name="tail_2_geom" type="capsule" fromto="0 0 0 -0.08 0 0.02" size="0.014"/>
+          <site name="tail_2_site" pos="-0.04 0 0.01" size="0.01"/>
+
+          <body name="tail_3" pos="-0.08 0 0.02">
+            <joint class="tail_tip" name="tail_joint_3" type="ball"/>
+            <geom class="tail" name="tail_3_geom" type="capsule" fromto="0 0 0 -0.07 0 0.01" size="0.01"/>
+            <site name="tail_3_site" pos="-0.035 0 0.005" size="0.01"/>
           </body>
+        </body>
+      </body>
+
           
         </body>
       </body>
@@ -396,20 +397,24 @@
          51-54: tail_joint_2 (quat)
          55-58: tail_joint_3 (quat)
     -->
-    <key name="quad_stance" qpos="
-      0 0 0.12 1 0 0 0
-      1 0 0 0
-      1 0 0 0
-      1 0 0 0  -0.7 0.3
-      1 0 0 0  -0.7 0.3
-      1 0 0 0
-      1 0 0 0
-      1 0 0 0  -0.6 0.25
-      1 0 0 0  -0.6 0.25
-      1 0 0 0
-      1 0 0 0
-      1 0 0 0
-    "/>
+<key name="quad_stance" qpos="
+  0 0 0.17  1 0 0 0
+  1 0 0 0
+  1 0 0 0
+
+  0.9848 0 -0.1736 0   1.20  -0.85
+  0.9848 0 -0.1736 0   1.20  -0.85
+
+  1 0 0 0
+  1 0 0 0
+
+  0.9763 0 -0.2164 0   1.30  -0.95
+  0.9763 0 -0.2164 0   1.30  -0.95
+
+  1 0 0 0
+  1 0 0 0
+  1 0 0 0
+"/>
   </keyframe>
   
   <!-- ==================== CONTACT EXCLUSIONS ==================== -->

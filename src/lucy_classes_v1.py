@@ -2,6 +2,7 @@
 Custom Gymnasium environment for Lucy quadruped/bipedal locomotion.
 """
 
+from math import floor
 import gymnasium as gym
 from gymnasium import spaces
 from gymnasium.envs.mujoco import MujocoEnv
@@ -33,7 +34,6 @@ class LucyEnv(MujocoEnv):
         xml_file: str = None,
         frame_skip: int = 5,
         reset_noise_scale: float = 0.02,  # Reduced from 0.1 to keep feet on ground
-        use_sensors: bool = False,
         render_mode: str = None,
         max_episode_seconds: float = None,
         stance: str = "quad_stance",
@@ -43,7 +43,6 @@ class LucyEnv(MujocoEnv):
             xml_file = os.path.join(PROJECT_ROOT, "animals", "lucy_v1.xml")
 
         self.reset_noise_scale = reset_noise_scale
-        self.use_sensors = use_sensors
         self._init_qpos = None
         self._init_qvel = None
 
@@ -65,13 +64,15 @@ class LucyEnv(MujocoEnv):
             **kwargs,
         )
 
+        self.__init_model_stance(stance)
+
         # Update observation space based on actual model
         obs_dim = self._get_obs().shape[0]
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float64
         )
 
-        self.__init_model_stance(stance)
+        
 
         self._preset_geometry_ids()
 
@@ -116,9 +117,6 @@ class LucyEnv(MujocoEnv):
         return self.data.sensordata.copy()
 
     def _preset_geometry_ids(self):
-        self._chest_id = self.name_to_id("chest", "body")
-        self._head_id = self.name_to_id("head", "body")
-        self._floor_id = self.name_to_id("floor", "geom")
 
         # Foot geom IDs for contact detection
         self._foot_geom_ids = {}
@@ -230,10 +228,9 @@ class LucyEnv(MujocoEnv):
 
         obs = np.concatenate([position, velocity])
 
-        if self.use_sensors:
-            # Add sensor readings
-            sensor_data = self.data.sensordata.copy()
-            obs = np.concatenate([obs, sensor_data])
+        # Add sensor readings
+        sensor_data = self.data.sensordata.copy()
+        obs = np.concatenate([obs, sensor_data])
 
         return obs
 
@@ -255,7 +252,8 @@ class LucyEnv(MujocoEnv):
 
     def _check_termination(self) -> tuple[bool, float]:
         """Return (terminated, chest_height)."""
-        chest_height = float(self.data.xpos[self._chest_id, 2])
+        chest_id = self.name_to_id("chest", "body")
+        chest_height = float(self.data.xpos[chest_id, 2])
         terminated = chest_height < 0.05
         return terminated, chest_height
 
@@ -284,8 +282,8 @@ class LucyEnv(MujocoEnv):
             "elapsed_sim_time": self._sim_time,
             "max_episode_seconds": self._max_episode_seconds,
         }
-        if self.use_sensors:
-            info["sensors"] = self.sensors_dict()
+
+        info["sensors"] = self.sensors_dict()
         return info
 
     def step(self, action: np.ndarray):
@@ -341,14 +339,15 @@ class LucyEnv(MujocoEnv):
     def get_foot_contacts(self) -> dict:
         """Return dict of which feet are in contact with floor."""
         contacts = {name: False for name in self._foot_geom_ids}
+        floor_id = self.name_to_id("floor", "geom")
 
         for i in range(self.data.ncon):
             contact = self.data.contact[i]
             g1, g2 = contact.geom1, contact.geom2
 
             for name, gid in self._foot_geom_ids.items():
-                if (g1 == gid and g2 == self._floor_id) or (
-                    g2 == gid and g1 == self._floor_id
+                if (g1 == gid and g2 == floor_id) or (
+                    g2 == gid and g1 == floor_id
                 ):
                     contacts[name] = True
 
@@ -358,21 +357,21 @@ class LucyEnv(MujocoEnv):
         """Return list of body parts touching floor (excluding feet)."""
         body_contacts = []
 
+        floor_id = self.name_to_id("floor", "geom")
+
         for i in range(self.data.ncon):
             contact = self.data.contact[i]
             g1, g2 = contact.geom1, contact.geom2
 
             # Check if floor is involved
-            if g1 != self._floor_id and g2 != self._floor_id:
+            if g1 != floor_id and g2 != floor_id:
                 continue
-
-            other_geom = g2 if g1 == self._floor_id else g1
+            other_geom = g2 if g1 == floor_id else g1
 
             # Skip if it's a foot
             if other_geom in self._foot_geom_ids.values():
                 continue
 
-            # Get geom name
 
             geom_name = mujoco.mj_id2name(
                 self.model, mujoco.mjtObj.mjOBJ_GEOM, other_geom
@@ -399,8 +398,8 @@ class LucyStandingWrapper(gym.Wrapper):
         self,
         env: LucyEnv,
         height_target_dicts=[
-            {"part": "chest", "target_height": [0.3, 0.4], "reward_weight": 2.0},
-            {"part": "hips", "target_height": [0.25, 0.4], "reward_weight": 1.0},
+            {"part": "chest", "target_height": [0.16, 0.25], "reward_weight": 2.0},
+            {"part": "hips", "target_height": [0.16, 0.25], "reward_weight": 1.0},
         ],
         upright_parts: list[str] = ["chest", "head", "hips"],
         upright_weight=1.0,
@@ -410,6 +409,8 @@ class LucyStandingWrapper(gym.Wrapper):
         fall_penalty=-30.0,
         head_direction_cone_deg=40.0,
         head_direction_weight=0.1,
+        leg_position_weight: float = 0.3,
+        which_legs: str = "all",
         **kwargs,
     ):
         super().__init__(env, **kwargs)
@@ -422,6 +423,9 @@ class LucyStandingWrapper(gym.Wrapper):
         self.fall_penalty = fall_penalty
         self.upright_parts = upright_parts
 
+        # Leg position reward weight (thigh/shin down + foot orientation)
+        self.leg_position_weight = leg_position_weight
+
         self.get_part_velocity = env.get_part_velocity
         self.get_sensor_by_name = env.get_sensor_by_name
 
@@ -431,10 +435,9 @@ class LucyStandingWrapper(gym.Wrapper):
         self.head_direction_cone_deg = head_direction_cone_deg
         self.head_direction_weight = head_direction_weight
 
-        # Get chest body ID
-        self._chest_id = self.name_to_id("chest", "body")
-        # Cache head id too (may be used by head_direction_reward)
-        self._head_id = self.name_to_id("head", "body")
+
+
+        self.which_legs = which_legs
 
     @property
     def xpos(self):
@@ -508,7 +511,8 @@ class LucyStandingWrapper(gym.Wrapper):
         Projects head x-axis onto the horizontal plane and measures angle to
         world +x; gives linear reward inside cone, else zero.
         """
-        hid = getattr(self, "_head_id", None)
+        hid = self.name_to_id("head", "body")
+        
         if hid is None or hid < 0:
             return 0.0, None
 
@@ -524,6 +528,83 @@ class LucyStandingWrapper(gym.Wrapper):
 
         score = 1.0 - (angle_deg / cone)
         return float(self.head_direction_weight * score), angle_deg
+
+    @property
+    def _leg_position_reward(self):
+        """Reward for leg positions: thigh/shin pointing downwards and foot pointing forward.
+
+        For each leg we compute:
+          * thigh_vec = shin_pos - thigh_pos
+          * shin_vec = foot_pos - shin_pos
+        Thigh/shin are rewarded for having a negative z component (pointing down);
+        foot is rewarded for being roughly perpendicular to the shin (≈90°) and
+        for pointing forward (world +x).
+
+        Returns (reward, details_dict).
+        """
+
+        legs = [
+            ("front_left_thigh", "front_left_shin", "front_left_foot"),
+            ("front_right_thigh", "front_right_shin", "front_right_foot")]
+        
+        if self.which_legs =="all":
+            legs.extend([
+                ("hind_left_thigh", "hind_left_shin", "hind_left_foot"),
+                ("hind_right_thigh", "hind_right_shin", "hind_right_foot"),
+            ])
+
+        scores = []
+        details = {}
+        for thigh_name, shin_name, foot_name in legs:
+            tid = self.name_to_id(thigh_name, "body")
+            sid = self.name_to_id(shin_name, "body")
+            fid = self.name_to_id(foot_name, "body")
+            if tid is None or sid is None or fid is None:
+                # missing parts -> no contribution
+                scores.append(0.0)
+                details[thigh_name.replace("_thigh", "")] = {
+                    "thigh": 0.0,
+                    "shin": 0.0,
+                    "foot": 0.0,
+                    "score": 0.0,
+                }
+                continue
+
+            thigh_pos = self.unwrapped.data.xpos[tid].copy()
+            shin_pos = self.unwrapped.data.xpos[sid].copy()
+            foot_pos = self.unwrapped.data.xpos[fid].copy()
+
+            thigh_vec = shin_pos - thigh_pos
+            shin_vec = foot_pos - shin_pos
+
+            t_score = max(0.0, -float(thigh_vec[2]) / (np.linalg.norm(thigh_vec) + 1e-8))
+            s_score = max(0.0, -float(shin_vec[2]) / (np.linalg.norm(shin_vec) + 1e-8))
+
+            # Foot orientation: reward when the foot's forward axis is roughly
+            # perpendicular to the shin vector (≈90°) AND the foot points forward.
+            foot_x = self.unwrapped.data.xmat[fid].reshape(3, 3)[:, 0]
+            fx_norm = foot_x / (np.linalg.norm(foot_x) + 1e-8)
+            s_norm = shin_vec / (np.linalg.norm(shin_vec) + 1e-8)
+
+            cosang = float(np.dot(s_norm, fx_norm))
+            perp_score = float(np.sqrt(max(0.0, 1.0 - cosang * cosang)))
+            # Require forward-facing: project foot axis onto world +x
+            forward_factor = float(max(0.0, fx_norm[0]))
+            f_score = float(perp_score * forward_factor)
+
+            leg_score = float((t_score + s_score + f_score) / 3.0)
+
+            details[thigh_name.replace("_thigh", "")] = {
+                "thigh": float(t_score),
+                "shin": float(s_score),
+                "foot": float(f_score),
+                "score": float(leg_score),
+            }
+            scores.append(leg_score)
+
+        mean_score = float(np.mean(scores)) if scores else 0.0
+        reward = float(self.leg_position_weight * mean_score)
+        return reward, details
 
     def _standing_components(self) -> dict:
         # compute numeric components in one place
@@ -549,6 +630,9 @@ class LucyStandingWrapper(gym.Wrapper):
             else 0.0
         )
 
+        # Leg position reward is part of standing diagnostics
+        leg_pos_reward, leg_pos_details = self._leg_position_reward
+
         return {
             "height_dict": height_reward_dict,
             "total_height_reward": float(total_height_reward),
@@ -557,6 +641,8 @@ class LucyStandingWrapper(gym.Wrapper):
             "stillness_reward": float(stillness_reward),
             "head_direction_reward": float(head_dir_reward),
             "head_direction_angle": head_dir_angle,
+            "leg_pos_reward": float(leg_pos_reward),
+            "leg_pos_details": leg_pos_details,
             "body_contacts": len(body_contacts),
             "contact_penalty": float(contact_penalty),
             "fall_penalty": float(fall_penalty),
@@ -580,6 +666,7 @@ class LucyStandingWrapper(gym.Wrapper):
             + comps["upright_reward"]
             + comps["stillness_reward"]
             + comps["head_direction_reward"]
+            + comps.get("leg_pos_reward", 0.0)
             + comps["contact_penalty"]
             + comps["fall_penalty"]
             + 0.5
@@ -617,9 +704,10 @@ class LucyWalkingWrapper(LucyStandingWrapper):
         forward_weight: float = 2.0,
 
         gait_weight: float = 0.2,
-        ctrl_cost_weight: float = 0.001,
-        stillness_weight: float = 0.0,  # Disable stillness reward for walking
+        ctrl_cost_weight: float = 0.000,
+        stillness_weight: float = -0.5,  # Negative reward for stillness to encourage movement
         body_contact_penalty: float = -2.0,
+        leg_position_weight: float = 0.1,
         standing_reward_discount_factor: float = 0.2,
         **kwargs,
     ):
@@ -628,24 +716,18 @@ class LucyWalkingWrapper(LucyStandingWrapper):
             env,
             stillness_weight=stillness_weight,
             body_contact_penalty=body_contact_penalty,
+            leg_position_weight=leg_position_weight,
             **kwargs,
         )
 
         if isinstance(env, LucyStandingWrapper):
             # Adaptively copy configuration from the existing standing wrapper
-            # so the walking wrapper inherits tuned params instead of defaults.
-            # Copy only simple configuration types to avoid copying large
-            # internal objects (model, data, etc.).
             for name, val in env.__dict__.items():
-                # skip internal wrapper plumbing
                 if name.startswith("__") or name in ("env", "unwrapped"):
                     continue
-
-                # copy simple scalar/sequence/dict config types
                 if isinstance(val, (int, float, str, bool, list, tuple, dict)):
                     setattr(self, name, val)
 
-        # Walking-specific params
         self.forward_weight = forward_weight
 
         self.gait_weight = gait_weight
@@ -654,8 +736,6 @@ class LucyWalkingWrapper(LucyStandingWrapper):
 
         self._prev_x = None
 
-        # Estimated forward velocity integrated from accelerometer (complementary filter)
-        self._est_forward_vel = 0.0
 
     @property
     def _forward_reward(self):
@@ -709,13 +789,11 @@ class LucyWalkingWrapper(LucyStandingWrapper):
         forward_reward, forward_vel = self._forward_reward
 
         # Gait reward based on upward z-velocity of feet
-
         gait_reward, feet_z_mean = self._gait_reward
         # Also include feet-down count for diagnostics
         foot_contacts = self.unwrapped.get_foot_contacts()
         n_feet_down = int(sum(foot_contacts.values()))
 
-        # Control cost
         ctrl_cost = float(self.ctrl_cost_weight * np.sum(np.square(action)))
 
         # Update internal prev_x for next step
@@ -764,5 +842,4 @@ class LucyWalkingWrapper(LucyStandingWrapper):
 
     def reset(self, **kwargs):
         self._prev_x = None
-        self._est_forward_vel = 0.0
         return super().reset(**kwargs)

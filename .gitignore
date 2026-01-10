@@ -3,3 +3,5 @@ logs/monitor/*
 __pycache__/
 trained_models/
 logs/*
+images/*
+recordings/*

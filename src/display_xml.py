@@ -7,7 +7,7 @@ from src import enforce_absolute_path
 from .definitions import PROJECT_ROOT
 
 
-def display_xml(xml_path: str):
+def display_xml(xml_path: str, stance ='quad_stance'):
 
 
     if not os.path.isabs(xml_path):
@@ -23,7 +23,20 @@ def display_xml(xml_path: str):
     
     print(f"Loaded model: {xml_path}")
     print(f"  Bodies: {model.nbody}, Joints: {model.njnt}, Actuators: {model.nu}")
-    
+
+    # Try to apply the named keyframe stance (if available), else fall back
+    key_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, stance)
+
+    print(f"Applying keyframe '{stance}' (id={key_id}) for display")
+    data.qpos[:] = model.key_qpos[key_id].copy()
+
+
+    # Ensure forward kinematics are updated for correct visualization
+    try:
+        mujoco.mj_forward(model, data)
+    except Exception:
+        # mj_forward may not be available depending on Mujoco wrapper version
+        pass
 
     mujoco.viewer.launch(model, data)
 

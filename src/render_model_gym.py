@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore", message=".*PPO on the GPU.*")
 
 from src import enforce_absolute_path
 from src.definitions import PROJECT_ROOT
-from src.old_lucy.lucy_classes_v0 import LucyEnv
+from src.lucy_classes_v1 import LucyEnv
 from src.ant import BipedalAntWrapper
 
 
@@ -120,7 +120,38 @@ def show_grid(frames, times, width_per_img=2, height_per_img=2.5):
     plt.tight_layout()
 
 
-def display_test_env(env, max_frames: int = 21, frame_skip:int = 1, attr_keys=None, model=None):
+def parse_nested_column(df: pd.DataFrame, col: str, prefix: str | None = None, drop_original: bool = True) -> pd.DataFrame:
+    """Expand a column containing nested dict/list-of-dict entries into flat dataframe columns.
+    """
+
+
+    if prefix is None:
+        prefix = f"{col}."
+
+
+    series = df[col].fillna({}).astype(object)
+
+    normalized = pd.json_normalize(series)
+    normalized = normalized.add_prefix(prefix)
+
+    out = df.join(normalized)
+    if drop_original:
+        out = out.drop(columns=[col])
+    return out
+
+
+def parse_nested_columns(df: pd.DataFrame, cols: list[str], drop_original: bool = True) -> pd.DataFrame:
+    """Expand multiple nested columns in `cols` using `parse_nested_column`.
+
+    Returns a dataframe with all expansions applied sequentially.
+    """
+    out = df.copy()
+    for c in cols:
+        out = parse_nested_column(out, c, prefix=f"{c}.", drop_original=drop_original)
+    return out
+
+
+def display_test_env(env, max_frames: int = 21, frame_skip:int = 1, attr_keys=None, model=None, parse_columns: list | None = None):
     """Collect frames/attributes and display a grid. Returns a DataFrame of attrs.
 
     If `model` is passed (Stable-Baselines style object), actions will be
@@ -141,6 +172,10 @@ def display_test_env(env, max_frames: int = 21, frame_skip:int = 1, attr_keys=No
 
     df = pd.DataFrame(attrs)
     df["cum_reward"] = df["reward"].cumsum()
+
+    # Optionally expand nested/dict-like columns for easier analysis
+    if parse_columns:
+        df = parse_nested_columns(df, parse_columns)
 
     terminated_early = False
     if len(frames)<max_frames*frame_skip:
@@ -165,7 +200,7 @@ def display_test_env(env, max_frames: int = 21, frame_skip:int = 1, attr_keys=No
 
     
 
-    df = df[["time"]+[str(col) for col in df.columns if col is not "time"]]
+    df = df[["time"] + [str(col) for col in df.columns if col != "time"]]
 
     show_grid(frames, times)
     plt.suptitle(f'First {len(frames)} frames (frame skip={frame_skip})', y=1.02)
