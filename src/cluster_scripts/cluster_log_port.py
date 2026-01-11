@@ -295,6 +295,7 @@ def main(
     env_params: dict = DEFAULT_ENV_PARAMS,
     run_params: dict = DEFAULT_RUN_PARAMS,
     output_prefix: str = "cluster_walking_v0",
+    create_env:callable = create_env,
 ):
 
 
