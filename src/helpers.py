@@ -104,15 +104,68 @@ def plot_lengths(
     )
 
 
+def iqr_filter(rewards, timesteps=None, multiplier=20):
+    """
+    Returns a boolean mask for rewards within [Q1 - multiplier*IQR, Q3 + multiplier*IQR].
+    If timesteps is provided, ensures the mask matches the length of timesteps.
+    """
+    rewards = np.asarray(rewards)
+    q1 = np.percentile(rewards, 25)
+    q3 = np.percentile(rewards, 75)
+    iqr = q3 - q1
+    lower = q1 - multiplier * iqr
+    upper = q3 + multiplier * iqr
+    mask = (rewards >= lower) & (rewards <= upper)
+    if timesteps is not None:
+        timesteps = np.asarray(timesteps)
+        if len(mask) != len(timesteps):
+            raise ValueError("rewards and timesteps must have the same length")
+    return mask
+
 def plot_training_progress(
-    df=None, rewards=None, lengths=None, timesteps=None, window=None, figsize=(14, 5)
+    df,
+    reward_col="r",
+    length_col="l",
+    timestep_col="t",
+    window=50,
+    figsize=(14, 5),
 ):
+    """
+    Plots training progress using a DataFrame and specified column names.
+    Requires df and the column names for rewards, lengths, and timesteps.
+    """
+    if df is None:
+        raise ValueError("df must be provided and not None.")
+    for col in [reward_col, length_col, timestep_col]:
+        if col not in df:
+            raise ValueError(f"Column '{col}' not found in DataFrame.")
+
+    rewards = np.asarray(df[reward_col])
+    lengths = np.asarray(df[length_col])
+    timesteps = np.asarray(df[timestep_col])
+
+    # Filter out NaNs
+    valid_mask = ~(
+        np.isnan(rewards) | np.isnan(lengths) | np.isnan(timesteps)
+    )
+    rewards = rewards[valid_mask]
+    lengths = lengths[valid_mask]
+    timesteps = timesteps[valid_mask]
+
+    # Optionally filter out extreme outliers in rewards
+    mask = iqr_filter(rewards)
+    rewards = rewards[mask]
+    lengths = lengths[mask]
+    timesteps = timesteps[mask]
+
     fig, axes = plt.subplots(1, 2, figsize=figsize)
-    plot_rewards(df, rewards, timesteps, window, ax=axes[0], show=False)
-    plot_lengths(df, lengths, timesteps, window, ax=axes[1], show=False)
+    _plot_metric(None, rewards, timesteps, window, figsize, reward_col, timestep_col, "Training Reward Over Time", "Episode Reward", "blue", "red", axes[0], show=False)
+    _plot_metric(None, lengths, timesteps, window, figsize, length_col, timestep_col, "Episode Length Over Time", "Episode Length", "green", "orange", axes[1], show=False)
     plt.tight_layout()
     plt.show()
     return fig, axes
+
+
 
 
 def print_training_summary(df=None, rewards=None, lengths=None, last_n=100):

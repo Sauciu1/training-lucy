@@ -12,14 +12,14 @@ import src.lucy_classes_v1 as lucy
 
 
 
-ouput_prefix = "cluster_standing_v0"
+ouput_prefix = "cluster_walking_v0"
 
 
 monitor_path, model_path = helpers.generate_paths_monitor_model(ouput_prefix)
 
 def create_env(*args, **kwargs):
-    return lucy.LucyStandingWrapper(
-        lucy.LucyEnv(xml_file=xml_path, render_mode="None", max_episode_seconds=10),
+    return lucy.LucyWalkingWrapper(
+        lucy.LucyEnv(xml_file=xml_path, render_mode="None", max_episode_seconds=30),
         *args,
         **kwargs,
     )
@@ -27,9 +27,9 @@ def create_env(*args, **kwargs):
 
 if __name__ == "__main__":
 
-    env_number = 30
-    xml_path = enforce_absolute_path("animals/lucy_v2.xml")
-    TIMESTEPS = 5_000_000
+    env_number = 7
+    xml_path = enforce_absolute_path("animals/lucy_v3.xml")
+    TIMESTEPS = 2_000_000
     
     vec_env = make_vec_env(
         create_env,
@@ -41,21 +41,23 @@ if __name__ == "__main__":
     vec_env = VecMonitor(vec_env, monitor_path)
 
     model = PPO(
-        "MlpPolicy",
-        vec_env,
+        policy="MlpPolicy",
+        env=vec_env,
         verbose=1,
         device="cpu",
         n_steps=2048,
         batch_size=256,
-        n_epochs=3,
+        n_epochs=4,
         gamma=0.99,
         gae_lambda=0.95,
         clip_range=0.2,
-        ent_coef=0.03,
-        learning_rate=1e-4,
-        target_kl=0.02,
+        ent_coef=0.02,
+        learning_rate=2e-4,
+        target_kl=0.03,
         policy_kwargs=dict(
-            net_arch=dict(pi=[512, 512, 512, 256], vf=[512, 512, 512, 256])
+            net_arch=dict(
+                pi=[512, 512], vf=[512, 512]
+            )
         ),
     )
 

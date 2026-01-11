@@ -39,13 +39,16 @@ def collect_frames(env:MujocoEnv, max_frames: int = 20, attr_keys=None, model=No
     Note: ``time`` is the canonical timestamp key (seconds). We do not
     include ``elapsed_sim_time`` to avoid duplication.
     """
+    # Will be set after first env.reset() if needed
+    default_keys = ("chest_height", "forward_velocity", "ctrl_cost")
+    use_all_keys = attr_keys == 'all'
     if attr_keys is None:
-        # Do not include 'elapsed_sim_time' here; 'time' will be provided
-        attr_keys = ("chest_height", "forward_velocity", "ctrl_cost")
+        attr_keys = default_keys
+
 
     # Helper to build a row and coerce numeric types
-    def _make_row(info, time_val, reward):
-        base = {k: (info.get(k) if isinstance(info, dict) else None) for k in attr_keys}
+    def _make_row(info, time_val, reward, keys):
+        base = {k: (info.get(k) if isinstance(info, dict) else None) for k in keys}
         base["time"] = float(time_val) if time_val is not None else None
         base["reward"] = float(reward) if reward is not None else None
         return base
@@ -56,12 +59,16 @@ def collect_frames(env:MujocoEnv, max_frames: int = 20, attr_keys=None, model=No
     obs, info = env.reset()
     prev_time = float(info.get("elapsed_sim_time", 0.0)) if isinstance(info, dict) else 0.0
 
-
+    # If attr_keys == 'all', get all keys from info dict (except 'elapsed_sim_time')
+    if use_all_keys and isinstance(info, dict):
+        attr_keys = [k for k in info.keys() if k != 'elapsed_sim_time']
+        if not attr_keys:
+            attr_keys = []
 
     frame = env.render()
     if frame is not None:
         frames.append(frame)
-        attrs.append(_make_row(info, prev_time, None))
+        attrs.append(_make_row(info, prev_time, None, attr_keys))
 
     for _ in range(max_frames - 1):
         if model is not None:
@@ -69,6 +76,12 @@ def collect_frames(env:MujocoEnv, max_frames: int = 20, attr_keys=None, model=No
         else:
             action = env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)
+
+        # If attr_keys == 'all', update keys if new keys appear in info
+        if use_all_keys and isinstance(info, dict):
+            new_keys = [k for k in info.keys() if k != 'elapsed_sim_time']
+            if set(new_keys) != set(attr_keys):
+                attr_keys = new_keys
 
         # Robust timestamp extraction
         if isinstance(info, dict) and info.get("elapsed_sim_time") is not None:
@@ -79,7 +92,7 @@ def collect_frames(env:MujocoEnv, max_frames: int = 20, attr_keys=None, model=No
         frame = env.render()
 
         # Record attributes (always) and append frame only if available
-        row = _make_row(info, prev_time, reward)
+        row = _make_row(info, prev_time, reward, attr_keys)
         if frame is not None:
             frames.append(frame)
         attrs.append(row)
@@ -160,6 +173,7 @@ def display_test_env(env, max_frames: int = 21, frame_skip:int = 1, attr_keys=No
     """Collect frames/attributes and display a grid. Returns a DataFrame of attrs."""
     if attr_keys is None:
         attr_keys = []
+
 
 
 

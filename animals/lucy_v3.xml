@@ -17,12 +17,12 @@
     <motor ctrllimited="true" ctrlrange="-0.5 0.5"/>
 
     <default class="torso">
-      <geom rgba="0.6 0.45 0.35 1" density="300.0"/>
+      <geom rgba="0.6 0.45 0.35 1" density="200.0"/>
       <joint damping="0.8"/>
     </default>
 
     <default class="head">
-      <geom rgba="0.7 0.55 0.45 1" density="45.0"/>
+      <geom rgba="0.7 0.55 0.45 1" density="25.0"/>
       <joint damping="0.6" range="0 70"/>
     </default>
 
@@ -32,50 +32,87 @@
     </default>
 
     <default class="front_leg">
-      <geom rgba="0.55 0.4 0.3 1" density="125.0"/>
+      <geom rgba="0.55 0.4 0.3 1" density="250.0"/>
       <default class="front_hip">
         <joint damping="0.5" range="0 60"/>
       </default>
 
-      <!-- Knee: prevent hyperextension + keep it "mid-bent" (no negative range),
-           so it can't stand on shin stubs with the knee locked backwards. -->
+      <!-- Knee: prevent hyperextension + keep it "mid-bent" (no negative range) -->
       <default class="front_knee">
         <joint type="hinge" axis="0 1 0" damping="0.6" range="20 150"/>
       </default>
 
+      <!-- Ankle pitch -->
       <default class="front_ankle">
         <joint type="hinge" axis="0 1 0" damping="0.4" range="-60 60"/>
-      </default>
-      <default class="front_foot">
-        <geom friction="1.5 0.5 0.5" conaffinity="1" solref="0.02 0.02"/>
       </default>
     </default>
 
     <default class="hind_leg">
-      <geom rgba="0.55 0.4 0.3 1" density="125.0"/>
+      <geom rgba="0.55 0.4 0.3 1" density="250.0"/>
 
       <!-- Hip: increase cone range to allow large flexion for bipedal walking -->
       <default class="hind_hip">
         <joint damping="0.5" range="0 120"/>
       </default>
 
-      <!-- Knee: prevent hyperextension + keep it "mid-bent" (no negative range),
-           discourages kneeling-on-shins as a stable "standing" strategy. -->
+      <!-- Knee: prevent hyperextension + keep it "mid-bent" (no negative range) -->
       <default class="hind_knee">
         <joint type="hinge" axis="0 1 0" damping="0.6" range="25 155"/>
       </default>
 
+      <!-- Ankle pitch -->
       <default class="hind_ankle">
         <joint type="hinge" axis="0 1 0" damping="0.4" range="-60 60"/>
       </default>
-      <default class="hind_foot">
-        <geom friction="1.5 0.5 0.5" conaffinity="1" solref="0.02 0.02"/>
+    </default>
+
+    <!-- Secondary foot tilt (roll) -->
+    <default class="foot_tilt">
+      <!-- small range for stability -->
+      <joint type="hinge" axis="1 0 0" damping="0.25" range="-15 15"/>
+    </default>
+
+    <!-- Reusable FLAT SQUARE FOOT (+ optional fillet approximation) -->
+    <default class="foot">
+      <!-- Stable contact -->
+      <geom conaffinity="1" condim="4" friction="1.5 0.5 0.5" solref="0.02 0.02" margin="0.0008"/>
+
+
+      <default class="foot_sole">
+        <geom type="box" pos="0.005 0.000 -0.012" size="0.020 0.020 0.006"/>
+      </default>
+
+      <default class="foot_edge_xp">
+        <geom type="capsule" fromto="0.025 -0.020 -0.012 0.025  0.020 -0.012" size="0.004"/>
+      </default>
+      <default class="foot_edge_xn">
+        <geom type="capsule" fromto="-0.015 -0.020 -0.012 -0.015  0.020 -0.012" size="0.004"/>
+      </default>
+      <default class="foot_edge_yp">
+        <geom type="capsule" fromto="-0.015  0.020 -0.012 0.025  0.020 -0.012" size="0.004"/>
+      </default>
+      <default class="foot_edge_yn">
+        <geom type="capsule" fromto="-0.015 -0.020 -0.012 0.025 -0.020 -0.012" size="0.004"/>
+      </default>
+
+      <default class="foot_corner_pp">
+        <geom type="sphere" pos="0.025  0.020 -0.012" size="0.004"/>
+      </default>
+      <default class="foot_corner_pn">
+        <geom type="sphere" pos="0.025 -0.020 -0.012" size="0.004"/>
+      </default>
+      <default class="foot_corner_np">
+        <geom type="sphere" pos="-0.015  0.020 -0.012" size="0.004"/>
+      </default>
+      <default class="foot_corner_nn">
+        <geom type="sphere" pos="-0.015 -0.020 -0.012" size="0.004"/>
       </default>
     </default>
 
     <!-- Tail segments (no twist DOF: implemented as 2-hinge "universal" joints per segment) -->
     <default class="tail">
-      <geom rgba="0.5 0.35 0.25 1" density="125.0"/>
+      <geom rgba="0.5 0.35 0.25 1" density="250.0"/>
       <joint damping="0.3"/>
     </default>
   </default>
@@ -100,10 +137,10 @@
       <geom class="torso" name="chest_geom" type="box" size="0.045 0.06 0.04"/>
       <site name="chest_site" pos="0 0 0" size="0.01"/>
 
-      <body name="neck" pos="0.06 0 0.01">
-        <joint class="neck" name="neck_base" type="ball" pos="-0.02 0 0"/>
-        <geom class="neck" name="neck_geom" type="capsule" fromto="0 0 0 0.04 0 0.005" size="0.025"/>
-        <site name="neck_site" pos="0.02 0 0" size="0.01"/>
+      <body name="neck" pos="0.045 0 0.01">
+        <joint class="neck" name="neck_base" type="ball" pos="-0.015 0 0"/>
+        <geom class="neck" name="neck_geom" type="capsule" fromto="0 0 0 0.025 0 0.003" size="0.023"/>
+        <site name="neck_site" pos="0.012 0 0" size="0.008"/>
 
         <body name="head" pos="0.05 0 0.005">
           <joint class="head" name="neck_head" type="ball" pos="-0.02 0 0"/>
@@ -112,7 +149,7 @@
         </body>
       </body>
 
-      <body name="front_left_thigh" pos="0.02 0.055 -0.02">
+      <body name="front_left_thigh" pos="0.02 0.055 0.013">
         <joint class="front_hip" name="front_left_hip" type="ball"/>
         <geom class="front_leg" name="front_left_thigh_geom" type="capsule" fromto="0 0 0 0.01 0.02 -0.08" size="0.02"/>
         <site name="front_left_thigh_site" pos="0.005 0.01 -0.04" size="0.01"/>
@@ -124,13 +161,24 @@
 
           <body name="front_left_foot" pos="0 0.01 -0.095">
             <joint class="front_ankle" name="front_left_ankle" type="hinge"/>
-            <geom class="front_foot" name="front_left_foot_geom" type="capsule" fromto="0 0 0 0.03 0.005 -0.015" size="0.012"/>
-            <site name="front_left_foot_site" pos="0.03 0.005 -0.015" size="0.01"/>
+            <joint class="foot_tilt" name="front_left_tilt" type="hinge"/>
+
+            <geom class="foot_sole" name="front_left_sole"/>
+            <geom class="foot_edge_xp" name="front_left_edge_xp"/>
+            <geom class="foot_edge_xn" name="front_left_edge_xn"/>
+            <geom class="foot_edge_yp" name="front_left_edge_yp"/>
+            <geom class="foot_edge_yn" name="front_left_edge_yn"/>
+            <geom class="foot_corner_pp" name="front_left_corner_pp"/>
+            <geom class="foot_corner_pn" name="front_left_corner_pn"/>
+            <geom class="foot_corner_np" name="front_left_corner_np"/>
+            <geom class="foot_corner_nn" name="front_left_corner_nn"/>
+
+            <site name="front_left_foot_site" pos="0.005 0.000 -0.012" size="0.01"/>
           </body>
         </body>
       </body>
 
-      <body name="front_right_thigh" pos="0.02 -0.055 -0.02">
+      <body name="front_right_thigh" pos="0.02 -0.055 0.013">
         <joint class="front_hip" name="front_right_hip" type="ball"/>
         <geom class="front_leg" name="front_right_thigh_geom" type="capsule" fromto="0 0 0 0.01 -0.02 -0.08" size="0.02"/>
         <site name="front_right_thigh_site" pos="0.005 -0.01 -0.04" size="0.01"/>
@@ -142,8 +190,19 @@
 
           <body name="front_right_foot" pos="0 -0.01 -0.095">
             <joint class="front_ankle" name="front_right_ankle" type="hinge"/>
-            <geom class="front_foot" name="front_right_foot_geom" type="capsule" fromto="0 0 0 0.03 -0.005 -0.015" size="0.012"/>
-            <site name="front_right_foot_site" pos="0.03 -0.005 -0.015" size="0.01"/>
+            <joint class="foot_tilt" name="front_right_tilt" type="hinge"/>
+
+            <geom class="foot_sole" name="front_right_sole"/>
+            <geom class="foot_edge_xp" name="front_right_edge_xp"/>
+            <geom class="foot_edge_xn" name="front_right_edge_xn"/>
+            <geom class="foot_edge_yp" name="front_right_edge_yp"/>
+            <geom class="foot_edge_yn" name="front_right_edge_yn"/>
+            <geom class="foot_corner_pp" name="front_right_corner_pp"/>
+            <geom class="foot_corner_pn" name="front_right_corner_pn"/>
+            <geom class="foot_corner_np" name="front_right_corner_np"/>
+            <geom class="foot_corner_nn" name="front_right_corner_nn"/>
+
+            <site name="front_right_foot_site" pos="0.005 0.000 -0.012" size="0.01"/>
           </body>
         </body>
       </body>
@@ -155,10 +214,10 @@
 
         <body name="hips" pos="-0.05 0 0">
           <joint class="torso" name="spine_hips" type="ball" pos="0.02 0 0" range="0 35"/>
-          <geom class="torso" name="hips_geom" type="box" size="0.042 0.05 0.038"/>
+          <geom class="torso" name="hips_geom" type="box" size="0.042 0.05 0.038" density="500.0"/>
           <site name="hips_site" pos="0 0 0" size="0.01"/>
 
-          <body name="hind_left_thigh" pos="-0.02 0.06 -0.02">
+          <body name="hind_left_thigh" pos="-0.02 0.06 0.013">
             <joint class="hind_hip" name="hind_left_hip" type="ball"/>
             <geom class="hind_leg" name="hind_left_thigh_geom" type="capsule" fromto="0 0 0 -0.015 0.025 -0.09" size="0.025"/>
             <site name="hind_left_thigh_site" pos="-0.007 0.012 -0.045" size="0.01"/>
@@ -170,13 +229,24 @@
 
               <body name="hind_left_foot" pos="0 0.015 -0.08">
                 <joint class="hind_ankle" name="hind_left_ankle" type="hinge"/>
-                <geom class="hind_foot" name="hind_left_foot_geom" type="capsule" fromto="0 0 0 0.035 0.008 -0.018" size="0.014"/>
-                <site name="hind_left_foot_site" pos="0.035 0.008 -0.018" size="0.01"/>
+                <joint class="foot_tilt" name="hind_left_tilt" type="hinge"/>
+
+                <geom class="foot_sole" name="hind_left_sole"/>
+                <geom class="foot_edge_xp" name="hind_left_edge_xp"/>
+                <geom class="foot_edge_xn" name="hind_left_edge_xn"/>
+                <geom class="foot_edge_yp" name="hind_left_edge_yp"/>
+                <geom class="foot_edge_yn" name="hind_left_edge_yn"/>
+                <geom class="foot_corner_pp" name="hind_left_corner_pp"/>
+                <geom class="foot_corner_pn" name="hind_left_corner_pn"/>
+                <geom class="foot_corner_np" name="hind_left_corner_np"/>
+                <geom class="foot_corner_nn" name="hind_left_corner_nn"/>
+
+                <site name="hind_left_foot_site" pos="0.005 0.000 -0.012" size="0.01"/>
               </body>
             </body>
           </body>
 
-          <body name="hind_right_thigh" pos="-0.02 -0.06 -0.02">
+          <body name="hind_right_thigh" pos="-0.02 -0.06 0.013">
             <joint class="hind_hip" name="hind_right_hip" type="ball"/>
             <geom class="hind_leg" name="hind_right_thigh_geom" type="capsule" fromto="0 0 0 -0.015 -0.025 -0.09" size="0.025"/>
             <site name="hind_right_thigh_site" pos="-0.007 -0.012 -0.045" size="0.01"/>
@@ -188,8 +258,19 @@
 
               <body name="hind_right_foot" pos="0 -0.015 -0.08">
                 <joint class="hind_ankle" name="hind_right_ankle" type="hinge"/>
-                <geom class="hind_foot" name="hind_right_foot_geom" type="capsule" fromto="0 0 0 0.035 -0.008 -0.018" size="0.014"/>
-                <site name="hind_right_foot_site" pos="0.035 -0.008 -0.018" size="0.01"/>
+                <joint class="foot_tilt" name="hind_right_tilt" type="hinge"/>
+
+                <geom class="foot_sole" name="hind_right_sole"/>
+                <geom class="foot_edge_xp" name="hind_right_edge_xp"/>
+                <geom class="foot_edge_xn" name="hind_right_edge_xn"/>
+                <geom class="foot_edge_yp" name="hind_right_edge_yp"/>
+                <geom class="foot_edge_yn" name="hind_right_edge_yn"/>
+                <geom class="foot_corner_pp" name="hind_right_corner_pp"/>
+                <geom class="foot_corner_pn" name="hind_right_corner_pn"/>
+                <geom class="foot_corner_np" name="hind_right_corner_np"/>
+                <geom class="foot_corner_nn" name="hind_right_corner_nn"/>
+
+                <site name="hind_right_foot_site" pos="0.005 0.000 -0.012" size="0.01"/>
               </body>
             </body>
           </body>
@@ -244,24 +325,28 @@
     <motor name="fl_hip_z" joint="front_left_hip" gear="0 0 12" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="fl_knee" joint="front_left_knee" gear="10" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="fl_ankle" joint="front_left_ankle" gear="7" ctrllimited="true" ctrlrange="-0.5 0.5"/>
+    <motor name="fl_tilt" joint="front_left_tilt" gear="4" ctrllimited="true" ctrlrange="-0.5 0.5"/>
 
     <motor name="fr_hip_x" joint="front_right_hip" gear="12 0 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="fr_hip_y" joint="front_right_hip" gear="0 12 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="fr_hip_z" joint="front_right_hip" gear="0 0 12" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="fr_knee" joint="front_right_knee" gear="10" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="fr_ankle" joint="front_right_ankle" gear="7" ctrllimited="true" ctrlrange="-0.5 0.5"/>
+    <motor name="fr_tilt" joint="front_right_tilt" gear="4" ctrllimited="true" ctrlrange="-0.5 0.5"/>
 
     <motor name="hl_hip_x" joint="hind_left_hip" gear="12 0 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hl_hip_y" joint="hind_left_hip" gear="0 12 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hl_hip_z" joint="hind_left_hip" gear="0 0 12" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hl_knee" joint="hind_left_knee" gear="10" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hl_ankle" joint="hind_left_ankle" gear="7" ctrllimited="true" ctrlrange="-0.5 0.5"/>
+    <motor name="hl_tilt" joint="hind_left_tilt" gear="4" ctrllimited="true" ctrlrange="-0.5 0.5"/>
 
     <motor name="hr_hip_x" joint="hind_right_hip" gear="12 0 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hr_hip_y" joint="hind_right_hip" gear="0 12 0" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hr_hip_z" joint="hind_right_hip" gear="0 0 12" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hr_knee" joint="hind_right_knee" gear="10" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hr_ankle" joint="hind_right_ankle" gear="7" ctrllimited="true" ctrlrange="-0.5 0.5"/>
+    <motor name="hr_tilt" joint="hind_right_tilt" gear="4" ctrllimited="true" ctrlrange="-0.5 0.5"/>
 
     <motor name="tail_1_y" joint="tail_joint_1_y" gear="5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="tail_1_z" joint="tail_joint_1_z" gear="5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
@@ -326,12 +411,19 @@
 
     <jointpos name="p_fl_knee" joint="front_left_knee"/>
     <jointpos name="p_fl_ankle" joint="front_left_ankle"/>
+    <jointpos name="p_fl_tilt" joint="front_left_tilt"/>
+
     <jointpos name="p_fr_knee" joint="front_right_knee"/>
     <jointpos name="p_fr_ankle" joint="front_right_ankle"/>
+    <jointpos name="p_fr_tilt" joint="front_right_tilt"/>
+
     <jointpos name="p_hl_knee" joint="hind_left_knee"/>
     <jointpos name="p_hl_ankle" joint="hind_left_ankle"/>
+    <jointpos name="p_hl_tilt" joint="hind_left_tilt"/>
+
     <jointpos name="p_hr_knee" joint="hind_right_knee"/>
     <jointpos name="p_hr_ankle" joint="hind_right_ankle"/>
+    <jointpos name="p_hr_tilt" joint="hind_right_tilt"/>
 
     <jointpos name="p_tail1_y" joint="tail_joint_1_y"/>
     <jointpos name="p_tail1_z" joint="tail_joint_1_z"/>
@@ -351,12 +443,19 @@
 
     <jointvel name="v_fl_knee" joint="front_left_knee"/>
     <jointvel name="v_fl_ankle" joint="front_left_ankle"/>
+    <jointvel name="v_fl_tilt" joint="front_left_tilt"/>
+
     <jointvel name="v_fr_knee" joint="front_right_knee"/>
     <jointvel name="v_fr_ankle" joint="front_right_ankle"/>
+    <jointvel name="v_fr_tilt" joint="front_right_tilt"/>
+
     <jointvel name="v_hl_knee" joint="hind_left_knee"/>
     <jointvel name="v_hl_ankle" joint="hind_left_ankle"/>
+    <jointvel name="v_hl_tilt" joint="hind_left_tilt"/>
+
     <jointvel name="v_hr_knee" joint="hind_right_knee"/>
     <jointvel name="v_hr_ankle" joint="hind_right_ankle"/>
+    <jointvel name="v_hr_tilt" joint="hind_right_tilt"/>
 
     <jointvel name="v_tail1_y" joint="tail_joint_1_y"/>
     <jointvel name="v_tail1_z" joint="tail_joint_1_z"/>
@@ -370,19 +469,20 @@
 
   <!-- ==================== KEYFRAMES ==================== -->
   <keyframe>
+    <!-- Added 1 extra DOF per foot (tilt) -> inserted a 0 after each ankle value -->
     <key name="quad_stance" qpos="
       0 0 0.17  1 0 0 0
       0.9914  0.1305  0  0
       0.9914 -0.1305  0  0
 
-      0.9848 0 -0.1736 0   1.20  -0.85
-      0.9848 0 -0.1736 0   1.20  -0.85
+      0.9848 0 -0.1736 0   1.20  -0.85  0
+      0.9848 0 -0.1736 0   1.20  -0.85  0
 
       0.9914  0.1305  0  0
       0.9914 -0.1305  0  0
 
-      0.9763 0 -0.2164 0   1.30  -0.95
-      0.9763 0 -0.2164 0   1.30  -0.95
+      0.9763 0 -0.2164 0   1.30  -0.95  0
+      0.9763 0 -0.2164 0   1.30  -0.95  0
 
       0 0
       0 0

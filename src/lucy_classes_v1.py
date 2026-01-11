@@ -134,25 +134,31 @@ class LucyEnv(MujocoEnv):
     def sensors_array(self) -> np.ndarray:
         """Return a copy of the full sensordata array."""
         return self.data.sensordata.copy()
+    
+
+    def _get_foot_geometry_ids_dict(self) -> dict:
+        foot_geom_ids = {}
+        ngeom = int(self.model.ngeom)
+
+
+        #foot_dict = 
+        for gid in range(ngeom):
+            geom_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, gid)
+ 
+            # Include if class name contains 'foot' or 'sole'
+            if ("foot" in geom_name.lower()) or ("sole" in geom_name.lower()) or ("edge" in geom_name.lower()):
+                foot_geom_ids[geom_name] = gid
+        return foot_geom_ids
+
 
     def _preset_geometry_ids(self):
         """Cache common IDs and maps to avoid repeated name lookups at runtime."""
         # Foot geom IDs for contact detection (name -> gid)
         self._foot_geom_ids = {}
-        self._geomid_to_footname = {}
-        for name in [
-            "front_left_foot_geom",
-            "front_right_foot_geom",
-            "hind_left_foot_geom",
-            "hind_right_foot_geom",
-        ]:
-            gid = self.name_to_id(name, "geom")
-            if gid is not None:
-                self._foot_geom_ids[name] = gid
-                self._geomid_to_footname[gid] = name
+
 
         # Quick lookup sets
-        self._foot_geom_id_set = set(self._foot_geom_ids.values())
+        self._foot_geom_id_set = set(self._get_foot_geometry_ids_dict().values())
 
         # Cache chest and floor IDs
         self._chest_id = self.name_to_id("chest", "body")
@@ -412,7 +418,6 @@ class LucyEnv(MujocoEnv):
         contact_arr = data.contact
         ncon = int(data.ncon)
         foot_set = self._foot_geom_id_set
-        geom_to_name = self._geomid_to_footname
 
         for i in range(ncon):
             c = contact_arr[i]
@@ -430,7 +435,7 @@ class LucyEnv(MujocoEnv):
 
         return contacts
 
-    def get_body_contacts(self) -> list:
+    def get_floor_contacts(self) -> list:
         """Return list of body parts touching floor (excluding feet), using cached ids.
 
         Optimized to minimize attribute access and delay name lookups until needed.
@@ -444,7 +449,7 @@ class LucyEnv(MujocoEnv):
         data = self.data
         contact_arr = data.contact
         ncon = int(data.ncon)
-        foot_set = self._foot_geom_id_set
+
         mj_id2name = mujoco.mj_id2name
 
         for i in range(ncon):
@@ -452,13 +457,13 @@ class LucyEnv(MujocoEnv):
             g1 = c.geom1
             g2 = c.geom2
 
-            # Check if floor is involved
-            if g1 != floor_id and g2 != floor_id:
+            # Only penalize if contact is with the floor
+            if (g1 != floor_id) and (g2 != floor_id):
                 continue
             other_geom = g2 if g1 == floor_id else g1
 
-            # Skip if it's a foot
-            if other_geom in foot_set:
+            # Skip if contact is with a foot geom (using cached foot geom IDs)
+            if other_geom in self._foot_geom_id_set:
                 continue
 
             geom_name = mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, other_geom)
@@ -484,14 +489,14 @@ class LucyStandingWrapper(gym.Wrapper):
         self,
         env: LucyEnv,
         height_target_dicts=[
-            {"part": "chest", "target_height": [0.25, 0.4], "reward_weight": 1.0},
-            {"part": "hips", "target_height": [0.25, 0.4], "reward_weight": 0.5},
-            {"part": "head", "target_height": [0.4, 0.5], "reward_weight": 0.3},
+            {"part": "chest", "target_height": [0.20, 0.4], "reward_weight": 0.7},
+            {"part": "hips", "target_height": [0.20, 0.4], "reward_weight": 0.5},
+            {"part": "head", "target_height": [0.25, 0.5], "reward_weight": 0.3},
         ],
         upright_parts: list[str] = ["chest", "head", "hips"],
         upright_weight=1.0,
         stillness_weight=0.2,
-        body_contact_penalty=-2.0,
+        body_contact_penalty=-0.5,
         fall_threshold=[0.12, 0.7],
         fall_penalty=-80.0,
         head_direction_cone_deg=20.0,
@@ -771,8 +776,10 @@ class LucyStandingWrapper(gym.Wrapper):
         stillness_reward = self.stillness_reward
         head_dir_reward, head_dir_angle = self.head_direction_reward
 
-        body_contacts = self.unwrapped.get_body_contacts()
+        body_contacts = self.unwrapped.get_floor_contacts()
+        contact_penalty = 0
         contact_penalty = self.body_contact_penalty * len(body_contacts)
+        
 
         # fall penalty and termination flag come from chest_height
         fall_penalty = (
@@ -814,7 +821,7 @@ class LucyStandingWrapper(gym.Wrapper):
         obs, base_reward, terminated, truncated, info = self.env.step(action)
 
         # If head touches the floor, terminate immediately and apply a large penalty.
-        body_contacts = self.unwrapped.get_body_contacts() or []
+        body_contacts = self.unwrapped.get_floor_contacts() or []
         head_touch = any("head" in str(name).lower() for name in body_contacts)
 
 
@@ -891,13 +898,6 @@ class LucyWalkingWrapper(LucyStandingWrapper):
             **kwargs,
         )
 
-        if isinstance(env, LucyStandingWrapper):
-            # Adaptively copy configuration from the existing standing wrapper
-            for name, val in env.__dict__.items():
-                if name.startswith("__") or name in ("env", "unwrapped"):
-                    continue
-                if isinstance(val, (int, float, str, bool, list, tuple, dict)):
-                    setattr(self, name, val)
 
         self.forward_weight = forward_weight
 
@@ -911,10 +911,11 @@ class LucyWalkingWrapper(LucyStandingWrapper):
 
     @property
     def _forward_reward(self):
-        """Reward for forward velocity toward target (uses `acc_trunk`)."""
+        """Reward for forward velocity of the whole model (root body in +x)."""
 
-        accel = self.get_sensor_by_name("vel_trunk")
-        forward_vel = accel[0]
+        # Use root body's x-velocity (global frame)
+        root_linear_vel = self.env.unwrapped.data.qvel[0]  # x-velocity of root
+        forward_vel = float(root_linear_vel)
         forward_reward = self.forward_weight * forward_vel
 
         return float(forward_reward), float(forward_vel)
@@ -985,8 +986,8 @@ class LucyWalkingWrapper(LucyStandingWrapper):
         # Gait reward based on foot linear accelerations (magnitude)
         gait_reward, feet_acc_mean = self._gait_reward
         # Also include feet-down count for diagnostics
-        foot_contacts = self.unwrapped.get_foot_contacts()
-        n_feet_down = int(sum(foot_contacts.values()))
+        #foot_contacts = self.unwrapped.get_foot_contacts()
+        #n_feet_down = int(sum(foot_contacts.values()))
 
         ctrl_cost = float(self.ctrl_cost_weight * np.sum(np.square(action)))
 
@@ -997,7 +998,7 @@ class LucyWalkingWrapper(LucyStandingWrapper):
             "forward_vel": float(forward_vel),
             "forward_reward": float(forward_reward),
             "gait_reward": float(gait_reward),
-            "feet_down": n_feet_down,
+            #"feet_down": n_feet_down,
             "feet_acc_mean": float(feet_acc_mean),
             "ctrl_cost": float(ctrl_cost),
             "x_position": float(self._prev_x),
