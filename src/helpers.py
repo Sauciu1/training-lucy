@@ -127,10 +127,32 @@ def print_training_summary(df=None, rewards=None, lengths=None, last_n=100):
         print(f"  Final avg length (last {last_n} eps): {np.mean(l[-last_n:]):.1f}")
 
 
+from datetime import datetime
+import os
+from src import enforce_absolute_path
+
+
+def generate_paths_monitor_model(prefix: str) -> tuple[str, str]:
+    time_suffix = datetime.now().strftime("%Y-%m-%d_%H-%M")
+
+    monitor_dir = enforce_absolute_path(
+        os.path.join("logs", f"{prefix}_{time_suffix}")
+    )
+
+    if not os.path.exists(monitor_dir):
+        os.makedirs(monitor_dir, exist_ok=True)
+
+    model_path = enforce_absolute_path(
+        os.path.join(
+            "trained_models", f"{prefix}_{time_suffix}"
+        )
+    )
+    return monitor_dir, model_path
+
+
+
+
 if __name__ == "__main__":
-    print("This is a helper module for plotting training metrics.")
-    import sys
+    print("This is a helper module and is not meant to be run directly.")
 
-
-    training_data = sys.argv[1]
 

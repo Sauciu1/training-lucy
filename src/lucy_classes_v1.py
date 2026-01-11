@@ -813,6 +813,11 @@ class LucyStandingWrapper(gym.Wrapper):
     def step(self, action):
         obs, base_reward, terminated, truncated, info = self.env.step(action)
 
+        # If head touches the floor, terminate immediately and apply a large penalty.
+        body_contacts = self.unwrapped.get_body_contacts() or []
+        head_touch = any("head" in str(name).lower() for name in body_contacts)
+
+
         comps = self._standing_components(action)
 
         # if fall occurred, terminate
@@ -831,6 +836,12 @@ class LucyStandingWrapper(gym.Wrapper):
             + comps["fall_penalty"]
             + 0.5
         )
+
+        if head_touch:
+            terminated = True
+            reward = reward -300.0
+            info.update({"head_floor_touch": True, "body_contacts": body_contacts})
+            return obs, reward, terminated, truncated, info
 
         # attach all computed diagnostics
         info.update(comps)
@@ -1027,3 +1038,13 @@ class LucyWalkingWrapper(LucyStandingWrapper):
         self._prev_x = None
         self._prev_foot_vels = None
         return super().reset(**kwargs)
+    
+
+
+
+class BipedalLucyWrapper(LucyWalkingWrapper):
+    """Wrapper for bipedal Lucy variant with unchanged leg parts."""
+
+    def __init__(self, env: LucyEnv, **kwargs):
+        super().__init__(env, **kwargs)
+

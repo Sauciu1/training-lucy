@@ -22,12 +22,12 @@
     </default>
 
     <default class="head">
-      <geom rgba="0.7 0.55 0.45 1" density="125.0"/>
+      <geom rgba="0.7 0.55 0.45 1" density="45.0"/>
       <joint damping="0.6" range="0 70"/>
     </default>
 
     <default class="neck">
-      <geom rgba="0.6 0.48 0.38 1" density="125.0"/>
+      <geom rgba="0.6 0.48 0.38 1" density="30.0"/>
       <joint damping="0.8" range="0 70"/>
     </default>
 
@@ -36,9 +36,13 @@
       <default class="front_hip">
         <joint damping="0.5" range="0 60"/>
       </default>
+
+      <!-- Knee: prevent hyperextension + keep it "mid-bent" (no negative range),
+           so it can't stand on shin stubs with the knee locked backwards. -->
       <default class="front_knee">
-        <joint type="hinge" axis="0 1 0" damping="0.6" range="-120 120"/>
+        <joint type="hinge" axis="0 1 0" damping="0.6" range="20 150"/>
       </default>
+
       <default class="front_ankle">
         <joint type="hinge" axis="0 1 0" damping="0.4" range="-60 60"/>
       </default>
@@ -49,12 +53,18 @@
 
     <default class="hind_leg">
       <geom rgba="0.55 0.4 0.3 1" density="125.0"/>
+
+      <!-- Hip: increase cone range to allow large flexion for bipedal walking -->
       <default class="hind_hip">
-        <joint damping="0.5" range="0 70"/>
+        <joint damping="0.5" range="0 120"/>
       </default>
+
+      <!-- Knee: prevent hyperextension + keep it "mid-bent" (no negative range),
+           discourages kneeling-on-shins as a stable "standing" strategy. -->
       <default class="hind_knee">
-        <joint type="hinge" axis="0 1 0" damping="0.6" range="-130 120"/>
+        <joint type="hinge" axis="0 1 0" damping="0.6" range="25 155"/>
       </default>
+
       <default class="hind_ankle">
         <joint type="hinge" axis="0 1 0" damping="0.4" range="-60 60"/>
       </default>
@@ -186,7 +196,6 @@
 
           <!-- ========== TAIL (2 DOF per segment, no twist) ========== -->
           <body name="tail_1" pos="-0.05 0 0.01">
-            <!-- Replace ball with 2 hinges: yaw/pitch only (no roll about tail axis) -->
             <joint class="tail" name="tail_joint_1_y" type="hinge" axis="0 1 0" range="-60 60" damping="0.3"/>
             <joint class="tail" name="tail_joint_1_z" type="hinge" axis="0 0 1" range="-60 60" damping="0.3"/>
             <geom class="tail" name="tail_1_geom" type="capsule" fromto="0 0 0 -0.09 0 0.03" size="0.018"/>
@@ -254,7 +263,6 @@
     <motor name="hr_knee" joint="hind_right_knee" gear="10" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="hr_ankle" joint="hind_right_ankle" gear="7" ctrllimited="true" ctrlrange="-0.5 0.5"/>
 
-    <!-- Tail actuators: 2 per tail segment (no twist axis exists) -->
     <motor name="tail_1_y" joint="tail_joint_1_y" gear="5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="tail_1_z" joint="tail_joint_1_z" gear="5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
     <motor name="tail_2_y" joint="tail_joint_2_y" gear="5" ctrllimited="true" ctrlrange="-0.5 0.5"/>
@@ -325,7 +333,6 @@
     <jointpos name="p_hr_knee" joint="hind_right_knee"/>
     <jointpos name="p_hr_ankle" joint="hind_right_ankle"/>
 
-    <!-- Tail sensors updated: hinges instead of ball joints -->
     <jointpos name="p_tail1_y" joint="tail_joint_1_y"/>
     <jointpos name="p_tail1_z" joint="tail_joint_1_z"/>
     <jointpos name="p_tail2_y" joint="tail_joint_2_y"/>
@@ -363,17 +370,16 @@
 
   <!-- ==================== KEYFRAMES ==================== -->
   <keyframe>
-    <!-- Updated: tail joints are now 6 hinge angles (2 per segment), not 3 quats -->
     <key name="quad_stance" qpos="
       0 0 0.17  1 0 0 0
-      1 0 0 0
-      1 0 0 0
+      0.9914  0.1305  0  0
+      0.9914 -0.1305  0  0
 
       0.9848 0 -0.1736 0   1.20  -0.85
       0.9848 0 -0.1736 0   1.20  -0.85
 
-      1 0 0 0
-      1 0 0 0
+      0.9914  0.1305  0  0
+      0.9914 -0.1305  0  0
 
       0.9763 0 -0.2164 0   1.30  -0.95
       0.9763 0 -0.2164 0   1.30  -0.95

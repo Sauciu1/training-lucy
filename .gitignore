@@ -1,7 +1,11 @@
 logs/monitor/*
 *.pyc
 __pycache__/
-trained_models/
+trained_models/*
 logs/*
 images/*
 recordings/*
+
+src/cluster_scripts/cluster_commands.md
+
+!trained_models/lucy_v2_standing_model_2026-01-11_09-04.zip

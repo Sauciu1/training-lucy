@@ -4,32 +4,18 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, DummyVecEnv
 from stable_baselines3.common.monitor import Monitor, load_results
-from datetime import datetime
 from src import helpers
-from src.definitions import PROJECT_ROOT, enforce_absolute_path
+from src.definitions import enforce_absolute_path
 
 import src.lucy_classes_v1 as lucy
 
 
-env_number = 30
-xml_path = enforce_absolute_path("animals/lucy_v2.xml")
-
-output_path = "cluster_standing_v0"
-model = mujoco.MjModel.from_xml_path(xml_path)
 
 
-time_suffix = datetime.now().strftime("%Y-%m-%d_%H-%M")
+ouput_prefix = "cluster_standing_v0"
 
-monitor_dir = enforce_absolute_path(
-    os.path.join(PROJECT_ROOT, "logs", "logs", f"{output_path}_{time_suffix}")
-)
 
-model_path = enforce_absolute_path(
-    os.path.join(
-        PROJECT_ROOT, "outputs", "trained_models", f"{output_path}_{time_suffix}"
-    )
-)
-
+monitor_path, model_path = helpers.generate_paths_monitor_model(ouput_prefix)
 
 def create_env(*args, **kwargs):
     return lucy.LucyStandingWrapper(
@@ -40,15 +26,19 @@ def create_env(*args, **kwargs):
 
 
 if __name__ == "__main__":
-    STANDING_TIMESTEPS = 10_000_000
+
+    env_number = 30
+    xml_path = enforce_absolute_path("animals/lucy_v2.xml")
+    TIMESTEPS = 5_000_000
+    
     vec_env = make_vec_env(
         create_env,
         n_envs=env_number,
         vec_env_cls=SubprocVecEnv,
-        monitor_dir=monitor_dir,
+        monitor_dir=monitor_path,
     )
 
-    vec_env = VecMonitor(vec_env, monitor_dir)
+    vec_env = VecMonitor(vec_env, monitor_path)
 
     model = PPO(
         "MlpPolicy",
@@ -69,8 +59,8 @@ if __name__ == "__main__":
         ),
     )
 
-    print(f"Training standing policy for {STANDING_TIMESTEPS:,} timesteps...")
-    model.learn(total_timesteps=STANDING_TIMESTEPS)
+    print(f"Training standing policy for {TIMESTEPS:,} timesteps...")
+    model.learn(total_timesteps=TIMESTEPS)
 
     model.save(model_path)
 
@@ -78,6 +68,6 @@ if __name__ == "__main__":
 
     print("Training complete.")
 
-    walking_df = load_results(monitor_dir)
+    walking_df = load_results(monitor_path)
 
     helpers.print_training_summary(walking_df)
