@@ -22,6 +22,8 @@ def create_env(*args, **kwargs):
         lucy.LucyEnv(xml_file=xml_path, render_mode="None", max_episode_seconds=30),
         *args,
         **kwargs,
+        stillness_weight=-2.0,
+        forward_weight=3.0
     )
 
 
@@ -73,3 +75,4 @@ if __name__ == "__main__":
     walking_df = load_results(monitor_path)
 
     helpers.print_training_summary(walking_df)
+    helpers.plot_training_progress(walking_df)

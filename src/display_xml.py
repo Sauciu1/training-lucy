@@ -24,11 +24,16 @@ def display_xml(xml_path: str, stance ='quad_stance'):
     print(f"Loaded model: {xml_path}")
     print(f"  Bodies: {model.nbody}, Joints: {model.njnt}, Actuators: {model.nu}")
 
-    # Try to apply the named keyframe stance (if available), else fall back
-    key_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, stance)
 
-    print(f"Applying keyframe '{stance}' (id={key_id}) for display")
-    data.qpos[:] = model.key_qpos[key_id].copy()
+    print(stance)
+    if stance != 'None':
+        print(f"Applying keyframe '{stance}' (id={key_id}) for display")
+        key_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, stance)
+        data.qpos[:] = model.key_qpos[key_id].copy()
+
+
+    
+    
 
 
     # Ensure forward kinematics are updated for correct visualization
@@ -42,12 +47,16 @@ def display_xml(xml_path: str, stance ='quad_stance'):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    if len(sys.argv) < 2:
         raise ValueError("Usage: python display_xml.py <path_to_xml>")
 
 
     xml_path = sys.argv[1]
+
+    
+    stance = sys.argv[2] if len(sys.argv) == 3 else 'quad_stance'
+
     xml_path = enforce_absolute_path(xml_path)
 
     
-    display_xml(xml_path)
+    display_xml(xml_path, stance)
