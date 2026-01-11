@@ -27,11 +27,11 @@ if __name__ == "__main__":
 
 
     run_params = DEFAULT_RUN_PARAMS
-    run_params.update({"timesteps": 1_000_000, "env_number": 14})
+    run_params.update({"timesteps": 5_000_000, "env_number": 14})
 
     for clip_range in [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
         model_params.update({"clip_range": clip_range})
-        cluster_log_port.main(model_params, env_params, run_params=run_params, output_prefix="standing_clip_test", create_env=create_env)
+        cluster_log_port.main(model_params, env_params, run_params=run_params, output_prefix=f"clip_test/standing_clip_{clip_range}", create_env=create_env)
 
 
 
