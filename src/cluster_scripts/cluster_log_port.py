@@ -296,12 +296,7 @@ def main(
     run_params: dict = DEFAULT_RUN_PARAMS,
     output_prefix: str = "cluster_walking_v0",
 ):
-    # Threading hygiene (prevents thread-explosion across many processes)
-    # Best is to set env vars in PBS too; this helps even if you forgot.
-    os.environ.setdefault("OMP_NUM_THREADS", "1")
-    os.environ.setdefault("MKL_NUM_THREADS", "1")
-    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-    os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+
 
     import datetime
     dt_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -328,7 +323,6 @@ def main(
         lambda: create_env(env_params),
         n_envs=int(run_params["env_number"]),
         vec_env_cls=SubprocVecEnv,
-        vec_env_kwargs={"start_method": "forkserver" if os.name != "nt" else "spawn"},
     )
 
     # Keeps episode stats in info dicts; no file output
