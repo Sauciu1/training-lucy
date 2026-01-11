@@ -275,14 +275,14 @@ def render_model_gym(model_path: str, xml_path: str, env_type: str = "lucy", spe
 
 if __name__ == "__main__":
 
-    if len(sys.argv) < 3 or len(sys.argv) > 5:
+    if len(sys.argv) < 2 or len(sys.argv) > 5:
         print("Usage: python render_model_gym.py <model_path> <xml_path> [env_type] [speed]")
         print(f"  env_type: {list(ENV_TYPES.keys())} (default: lucy)")
         print("  speed: playback speed multiplier (default: 1.0, use 0.5 for half speed)")
         sys.exit(1)
 
     model_path = enforce_absolute_path(sys.argv[1])
-    xml_path = enforce_absolute_path(sys.argv[2])
+    xml_path = enforce_absolute_path("animals\lucy_v3.xml")
     env_type = sys.argv[3] if len(sys.argv) >= 4 else "lucy"
     speed = float(sys.argv[4]) if len(sys.argv) == 5 else 1.0
 
