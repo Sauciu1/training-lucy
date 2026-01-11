@@ -8,7 +8,7 @@ if __name__ == "__main__":
     model_params = DEFAULT_MODEL_PARAMS
 
     run_params = DEFAULT_RUN_PARAMS
-    run_params.update({"timesteps": 3_000_000})
+    run_params.update({"timesteps": 1_000_000})
 
     network_tests = [
         {"policy_kwargs": {"net_arch": {"pi": [256, 256], "vf": [256, 256]}}},

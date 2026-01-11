@@ -13,6 +13,15 @@ import src.lucy_classes_v1 as lucy
 
 ouput_prefix = "cluster_walking_v0"
 monitor_path, model_path = helpers.generate_paths_monitor_model(ouput_prefix)
+def prepend_cluster_copy(path):
+    # If already inside cluster_copy, do not double-prepend
+    if os.path.isabs(path):
+        rel = os.path.relpath(path, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    else:
+        rel = path
+    if rel.startswith("cluster_copy" + os.sep):
+        return path
+    return os.path.join("cluster_copy", rel)
 
 
 DEFAULT_MODEL_PARAMS = {
@@ -63,7 +72,8 @@ class RunLogger:
     def __init__(self, run_history_dir=None):
         import datetime
 
-        self.run_history_dir = run_history_dir or enforce_absolute_path("run_history")
+        base_history_dir = run_history_dir or enforce_absolute_path("run_history")
+        self.run_history_dir = prepend_cluster_copy(base_history_dir)
         os.makedirs(self.run_history_dir, exist_ok=True)
         run_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.run_dir = os.path.join(self.run_history_dir, f"run_{run_id}")
@@ -100,6 +110,8 @@ def train_and_log(
     model_params, env_params, run_params, ouput_prefix, logger: RunLogger
 ):
     monitor_path, model_path = helpers.generate_paths_monitor_model(ouput_prefix)
+    monitor_path = prepend_cluster_copy(monitor_path)
+    model_path = prepend_cluster_copy(model_path)
     vec_env = make_vec_env(
         lambda: create_env(env_params),
         n_envs=run_params["env_number"],
@@ -143,8 +155,8 @@ def rel_file_links(env_params, model_path, monitor_path):
     return {
         "lucy_env": make_relative(env_params["env_kwargs"]["xml_file"], base),
         "script": make_relative(__file__, base),
-        "model_path": make_relative(model_path, base),
-        "monitor_path": make_relative(monitor_path, base),
+        "model_path": make_relative(prepend_cluster_copy(model_path), base),
+        "monitor_path": make_relative(prepend_cluster_copy(monitor_path), base),
     }
 
 
@@ -160,6 +172,8 @@ def main(
 
     # Train and log
     monitor_path, model_path = helpers.generate_paths_monitor_model(output_prefix)
+    monitor_path = prepend_cluster_copy(monitor_path)
+    model_path = prepend_cluster_copy(model_path)
     vec_env = make_vec_env(
         lambda: create_env(env_params),
         n_envs=run_params["env_number"],
