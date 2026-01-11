@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -N train_walking_0
 #PBS -l select=1:ncpus=16:mem=120gb
-#PBS -l walltime=02:40:00
+#PBS -l walltime=03:40:00
 #PBS -j oe
 
 cd "$HOME/projects/training-lucy" || exit 1
