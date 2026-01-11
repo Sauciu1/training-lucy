@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     for test_params in network_tests:
         model_params.update(test_params)
-        cluster_log_port.main(model_params, run_params=run_params, output_prefix="walking_network_test")
+        cluster_log_port.main(model_params, run_params=run_params, output_prefix="long_n_arch_test")
 
     print("Network architecture tests completed.")
     sys.exit(0)
