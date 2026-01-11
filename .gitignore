@@ -9,3 +9,6 @@ recordings/*
 src/cluster_scripts/cluster_commands.md
 
 !trained_models/lucy_v2_standing_model_2026-01-11_09-04.zip
+
+
+run_history/*
