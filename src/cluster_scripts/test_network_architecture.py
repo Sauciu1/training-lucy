@@ -8,7 +8,7 @@ if __name__ == "__main__":
     model_params = DEFAULT_MODEL_PARAMS
 
     run_params = DEFAULT_RUN_PARAMS
-    run_params.update({"timesteps": 1_000_000})
+    run_params.update({"timesteps": 3_000_000, "env_number": 44})
 
     network_tests = [
         {"policy_kwargs": {"net_arch": {"pi": [256, 256], "vf": [256, 256]}}},
@@ -19,4 +19,4 @@ if __name__ == "__main__":
 
     for test_params in network_tests:
         model_params.update(test_params)
-        cluster_log_port.main(model_params, output_prefix="walking_network_test")
+        cluster_log_port.main(model_params, run_params=run_params, output_prefix="walking_network_test")

@@ -13,6 +13,7 @@ dependencies = [
     "mujoco-mjx>=3.4.0",
     "mujoco-py>=2.1.2.14",
     "stable-baselines3>=2.7.1",
+    "tensorboard>=2.20.0",
     "torch",
     "torchvision",
     "warp>=1.0.4",
