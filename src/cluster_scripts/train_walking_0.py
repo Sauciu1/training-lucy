@@ -29,9 +29,9 @@ def create_env(*args, **kwargs):
 
 if __name__ == "__main__":
 
-    env_number = 7
+    env_number = 30
     xml_path = enforce_absolute_path("animals/lucy_v3.xml")
-    TIMESTEPS = 2_000_000
+    TIMESTEPS = 5_000_000
     
     vec_env = make_vec_env(
         create_env,
