@@ -37,23 +37,18 @@ def main():
     # Shorter episodes for faster eval
     env_params["env_kwargs"]["max_episode_seconds"] = 10.0
 
-    # Architecture override
+
     model_params.setdefault("policy_kwargs", {})
     model_params["policy_kwargs"] = {"net_arch": {"pi": [512, 512], "vf": [512, 512]}}
 
-    # Choose a sane env_number vs CPU allocation (PBS ncpus)
-    # Prefer: n_envs = ncpus - 1 (leave 1 core for learner)
+
     try:
         ncpus = int(os.environ.get("PBS_NCPUS") or os.environ.get("NCPUS") or 0)
+        run_params["env_number"] = ncpus*1
     except ValueError:
-        ncpus = 0
+        run_params["env_number"] = 14
 
-    if ncpus > 1:
-        run_params["env_number"] = min(int(run_params.get("env_number", 14)), ncpus - 1)
-    else:
-        run_params["env_number"] = int(run_params.get("env_number", 14))
-
-    run_params["timesteps"] = int(run_params.get("timesteps", 5_000_000))
+    run_params["timesteps"] = 3_000_000
 
     # Sweep (sequential; if you want concurrent sweeps, submit multiple PBS jobs)
     clip_ranges = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
