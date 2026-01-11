@@ -95,6 +95,7 @@ def rolling_average_lineplot(data, x_col, y_col, timestep_average=1000, color=No
         df["rolling_avg"],
         color="red",
         label=f"Rolling Average of {y_col} (window={timestep_average})",
+        **kwargs,
     )
     # Actual average (light blue, alpha=0.3)
     ax.plot(df[x_col], df[y_col], color="skyblue", alpha=0.4, label=f"Actual {y_col}")
@@ -108,7 +109,7 @@ def rolling_average_lineplot(data, x_col, y_col, timestep_average=1000, color=No
 
 def rolling_hue_lineplot(
     df, x_col, y_col, hue=None, n_values=100, q=0.99,
-    ax=None, cmap="viridis", alpha=0.9, figsize=(8, 6)
+    ax=None, cmap="viridis", alpha=0.9, figsize=(8, 6), hue_order=None
 ):
     """
     Plot rolling quantile over a fixed number of values (n_values) rather than window size in x_col.
@@ -125,6 +126,8 @@ def rolling_hue_lineplot(
         groups = list(d.groupby(hue, sort=is_numeric_hue))
         if is_numeric_hue:
             groups = sorted(groups, key=lambda kv: kv[0])
+        if hue_order is not None:
+            groups = sorted(groups, key=lambda kv: hue_order.index(kv[0]) if kv[0] in hue_order else -1)
 
         colors = cm.get_cmap(cmap)(
             np.linspace(0.15, 0.95, len(groups))
