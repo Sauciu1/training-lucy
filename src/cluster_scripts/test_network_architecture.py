@@ -7,8 +7,10 @@ from src.cluster_scripts.cluster_log_port import DEFAULT_ENV_PARAMS, DEFAULT_MOD
 if __name__ == "__main__":
     model_params = DEFAULT_MODEL_PARAMS
 
+    print("Starting network architecture tests...")
+
     run_params = DEFAULT_RUN_PARAMS
-    run_params.update({"timesteps": 3_000_000, "env_number": 44})
+    run_params.update({"timesteps": 3_000_000, "env_number": 40})
 
     network_tests = [
         {"policy_kwargs": {"net_arch": {"pi": [256, 256], "vf": [256, 256]}}},
