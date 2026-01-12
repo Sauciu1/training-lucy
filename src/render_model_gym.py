@@ -14,6 +14,12 @@ from src.lucy_classes_v1 import LucyEnv
 from src.ant import BipedalAntWrapper
 
 
+from gymnasium.envs.mujoco.mujoco_env import MujocoEnv
+import numpy as np
+import matplotlib.pyplot as plt
+import mujoco
+
+
 # Available environment types
 ENV_TYPES = {
     "lucy": lambda xml_path: LucyEnv(xml_file=xml_path, render_mode="human"),
@@ -22,10 +28,7 @@ ENV_TYPES = {
 }
 
 
-from gymnasium.envs.mujoco.mujoco_env import MujocoEnv
-import numpy as np
-import matplotlib.pyplot as plt
-import mujoco
+
 
 def collect_frames(env:MujocoEnv, max_frames: int = 20, attr_keys=None, model=None):
     """If `model` (stable-baselines style) is provided, use it to pick actions.
@@ -282,7 +285,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     model_path = enforce_absolute_path(sys.argv[1])
-    xml_path = enforce_absolute_path("animals\lucy_v3.xml")
+    xml_path = enforce_absolute_path("animals/lucy_v3.xml")
     env_type = sys.argv[3] if len(sys.argv) >= 4 else "lucy"
     speed = float(sys.argv[4]) if len(sys.argv) == 5 else 1.0
 
