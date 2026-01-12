@@ -233,7 +233,7 @@ def render_model_gym(model_path: str, xml_path: str, env_type: str = "lucy", spe
         sys.exit(1)
     
     eval_env = ENV_TYPES[env_type](xml_path)
-    model = PPO.load(model_path.replace(".zip", ""), env=eval_env)
+    model = PPO.load(model_path.replace(".zip.zip", ""), env=eval_env)
 
     # Configure camera
     mujoco_env = eval_env.unwrapped
