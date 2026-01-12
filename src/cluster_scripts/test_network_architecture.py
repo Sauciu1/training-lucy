@@ -14,13 +14,14 @@ if __name__ == "__main__":
     run_params.update({"timesteps": 10_000_000, "env_number": 14})
 
     network_tests = [
-        {"policy_kwargs": {"net_arch": {"pi": [128, 128], "vf": [128, 128]}}},
-        {"policy_kwargs": {"net_arch": {"pi": [256, 256], "vf": [256, 256]}}},
-        {"policy_kwargs": {"net_arch": {"pi": [256, 256, 128], "vf": [256, 256, 128]}}},
-        {"policy_kwargs": {"net_arch": {"pi": [256, 256, 128, 64], "vf": [256, 256, 128, 64]}}},
-        {"policy_kwargs": {"net_arch": {"pi": [512, 512], "vf": [512, 512]}}},
+       # {"policy_kwargs": {"net_arch": {"pi": [128, 128], "vf": [128, 128]}}},
+      #  {"policy_kwargs": {"net_arch": {"pi": [256, 256], "vf": [256, 256]}}},
+      #  {"policy_kwargs": {"net_arch": {"pi": [256, 256, 128], "vf": [256, 256, 128]}}},
+      #  {"policy_kwargs": {"net_arch": {"pi": [256, 256, 128, 64], "vf": [256, 256, 128, 64]}}},
+      #  {"policy_kwargs": {"net_arch": {"pi": [512, 512], "vf": [512, 512]}}},
+      {"policy_kwargs": {"net_arch": {"pi": [512, 512, 512, 128], "vf": [512, 512, 512, 256, 128]}}},
         {"policy_kwargs": {"net_arch": {"pi": [512, 512, 256], "vf": [512, 512, 256]}}},
-        {"policy_kwargs": {"net_arch": {"pi": [512, 512, 512, 128], "vf": [512, 512, 512, 256, 128]}}},
+        
 
     ]
 
